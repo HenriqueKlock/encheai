@@ -15,7 +15,7 @@ o rendimento medido do combustível e avaliações de um toque, além da fiscali
   - Os cálculos não dependem de tela e são testados: `src/calc.ts`, `src/postos.ts`, `src/indicators.ts`, `src/maintenance.ts`.
 - **Supabase (projeto `encheai`, São Paulo):**
   - Tabelas pessoais com RLS por usuário.
-  - `ratings`: avaliações, uma por abastecimento, só do próprio e até 7 dias depois.
+  - `ratings`: avaliações, uma por abastecimento, só do próprio e até 30 dias depois; na média vale a data do abastecimento.
   - `station_live`: números da rede por posto. São só agregados, recalculados a cada 5 min por `rede_refresh()` (pg_cron) a partir de quem aceitou contribuir.
   - Limites de publicação: rendimento com 5 pessoas e 15 tanques; cada item da avaliação com 3 respostas; preço dos últimos 7 dias.
   - Funções:

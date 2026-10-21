@@ -1,11 +1,13 @@
 // Números da rede por posto (preço que os usuários pagaram, rendimento medido e avaliações).
 // Vêm da tabela station_live (só agregados, recalculados a cada 5 min no servidor) e ficam
 // guardados no aparelho para abrir sem internet.
-import { getMeta, setMeta } from './db';
+import { db, getMeta, setMeta } from './db';
 import { currentSession, supabase } from './sync';
 import type { NetMap, StationLive } from './postos';
 
-const KEY = 'rede_cache_v1';
+// v2: descarta cópias guardadas antes de as avaliações seguirem o abastecimento (podiam mostrar avaliação apagada)
+const KEY = 'rede_cache_v2';
+const OLD_KEYS = ['rede_cache_v1'];
 const FRESH_MS = 5 * 60 * 1000;
 const KEEP_MS = 7 * 86400000;
 const CHUNK = 150;
@@ -18,6 +20,7 @@ let saveTimer: number | undefined;
 async function load(): Promise<Cache> {
   if (cache) return cache;
   cache = await getMeta<Cache>(KEY, {});
+  for (const k of OLD_KEYS) db.meta.delete(k).catch(() => {});
   for (const [id, e] of Object.entries(cache)) if (e.live) net.set(id, e.live);
   return cache;
 }

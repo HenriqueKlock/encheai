@@ -92,7 +92,7 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
         const metric = i ? fmt(i.kml, 2) + ' km/l' : !f.full_tank ? 'parcial' : f === firstFull ? 'primeiro tanque' : '–';
         const st = f.station ? f.station.split(' · ')[0] : null;
         const rt = S.ratings[f.id];
-        const canRate = !!f.station_id && !rt && S.prefs.contribute && Math.round((Date.parse(today) - Date.parse(f.date)) / 864e5) <= 7;
+        const canRate = !!f.station_id && !rt && S.prefs.contribute && Math.round((Date.parse(today) - Date.parse(f.date)) / 864e5) <= 30;
         const sub = [km(f.odometer_km) + ' km', brl(f.price_per_l || f.total_brl / f.liters) + '/l'].join(' · ');
         entries.push({
           date: f.date, odo: f.odometer_km, total: f.total_brl, kind: 'f',

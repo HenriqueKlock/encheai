@@ -30,12 +30,12 @@ begin
   insert into public.user_places (kind, label, lat, lon, updated_at) values ('casa', 'Rua de A', -27.6, -48.5, now());
   insert into public.fuel_logs (id, vehicle_id, date, odometer_km, liters, total_brl, price_per_l, fuel, full_tank, station_id, updated_at)
     values (fs, va, current_date, 1400, 40, 260, 6.5, 'gasolina', true, '11111111000111', now()),
-           (fo, va, current_date - 30, 900, 40, 260, 6.5, 'gasolina', true, '11111111000111', now());
+           (fo, va, current_date - 40, 900, 40, 260, 6.5, 'gasolina', true, '11111111000111', now());
   insert into public.ratings (fuel_log_id, station_id, bomba) values (fs, '11111111000111', 1);
   begin
     insert into public.ratings (fuel_log_id, station_id, bomba) values (fo, '11111111000111', 1);
-    fail_count := fail_count + 1; res := res || 'FALHOU avaliou abastecimento de 30 dias atrás'::text;
-  exception when others then ok_count := ok_count + 1; res := res || 'ok    não avalia abastecimento com mais de 7 dias'::text;
+    fail_count := fail_count + 1; res := res || 'FALHOU avaliou abastecimento de 40 dias atrás'::text;
+  exception when others then ok_count := ok_count + 1; res := res || 'ok    não avalia abastecimento com mais de 30 dias'::text;
   end;
   begin
     insert into public.ratings (fuel_log_id, station_id, bomba) values (fa, '11111111000111', 1);

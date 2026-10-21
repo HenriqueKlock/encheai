@@ -375,7 +375,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     if (editing && editing.station_id !== row.station_id) await deleteRating(editing.id);
     await db.fuel_logs.put(row);
     if (st) invalidateNetwork(st.c);
-    const askRating = !wasEdit && !!st && S.prefs.contribute && !!(await currentSession()) && ageDays(date, todayISO()) <= 7;
+    const askRating = !wasEdit && !!st && S.prefs.contribute && !!(await currentSession()) && ageDays(date, todayISO()) <= 30;
     if (askRating) {
       openRating(row.id, true);
       return;
@@ -394,7 +394,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
       const prev = S.ratings[fillId];
       rating = {
         fill: f, bomba: prev?.bomba ?? null, atendimento: prev?.atendimento ?? null, banheiro: prev?.banheiro ?? null,
-        justSaved, existed: !!prev, locked: ageDays(f.date, todayISO()) > 7,
+        justSaved, existed: !!prev, locked: ageDays(f.date, todayISO()) > 30,
       };
       renderRating();
       openSheet('rate-sheet');
@@ -416,7 +416,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
         '<div class="rate-head"><h2 id="rate-title">Como foi no posto?</h2><span class="hint">Opcional. Entra na média do posto sem o seu nome.</span></div>'
       : '<div class="rate-head"><h2 id="rate-title">' + (r.existed ? 'Sua avaliação' : 'Como foi no posto?') + '</h2><span class="hint">' + dm(f.date) + ' · ' + what + '</span></div>';
     const note = r.locked
-      ? '<p class="hint">Já passaram 7 dias desse abastecimento: dá para apagar a avaliação, mas não mudar.</p>'
+      ? '<p class="hint">Já passaram 30 dias desse abastecimento: dá para apagar a avaliação, mas não mudar.</p>'
       : r.existed ? '<p class="hint">Entra na média do posto sem o seu nome. Mude as respostas ou apague.</p>' : '';
     const send = '<button type="button" class="btn primary" data-rate="send"' + (n ? '' : ' disabled') + '>' + (n ? (r.existed ? 'Salvar' : 'Enviar') : 'Escolha uma resposta') + '</button>';
     const btns = r.justSaved
