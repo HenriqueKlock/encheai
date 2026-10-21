@@ -9,6 +9,7 @@ import { $, closeSheets, esc, openSheet, pl, todayISO, toast } from '../ui';
 import { currentRoute, onShow } from '../router';
 import { renderLogin } from './conta';
 import { ICON } from '../icons';
+import { canInstall, install, isStandalone, onInstallChange } from '../instalar';
 
 declare const __BUILD__: string;
 
@@ -51,7 +52,11 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
           : '<span class="hint">Desligado: você continua vendo a rede, mas seus abastecimentos não entram nas médias.</span>') + '</div>'
       : '<div class="card" id="p-login"></div>';
 
+    const inst = canInstall() && !isStandalone()
+      ? '<div class="list-card"><button type="button" class="row simple" data-p="install"><span class="mid"><span class="a">Instalar o Enche Aí</span><span class="b">Abre direto da tela inicial, como um app</span></span><span></span><span class="chev">' + ICON.chev + '</span></button></div>'
+      : '';
     const nav =
+      inst +
       '<div class="list-card">' +
       '<a class="row nav" href="#/locais"><span class="ic gray">' + PIN + '</span><span class="mid"><span class="a">Casa e trabalho</span><span class="b">' + (pls.length ? esc(pls.map((p) => p!.label).join(' · ')) : 'Base para comparar postos') + '</span></span><span class="chev">' + ICON.chev + '</span></a>' +
       '<button type="button" class="row nav" data-act="cars"><span class="ic gray">' + activeVehicles().length + '</span><span class="mid"><span class="a">Carros</span><span class="b">' + esc(cars) + '</span></span><span class="chev">' + ICON.chev + '</span></button>' +
@@ -95,6 +100,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     if (p === 'sync') { await sync(); return render(); }
     if (p === 'out') { await signOut(); toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
     if (p === 'export') return download();
+    if (p === 'install') { if (await install()) toast('Instalado! Procure o Enche Aí na tela inicial.'); return render(); }
     if (p === 'legacy') return importLegacy();
     if (p === 'delete') {
       $<HTMLInputElement>('del-confirm').value = '';
@@ -153,6 +159,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
   });
 
   subscribe(render);
+  onInstallChange(render);
   onShow('perfil', () => render());
   return { render, importLegacy, legacyInfo: () => legacy, checkLegacy };
 }

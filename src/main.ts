@@ -5,6 +5,7 @@ import '@fontsource/geist/latin-700.css';
 import './styles.css';
 
 import { registerSW } from 'virtual:pwa-register';
+import { startInstall } from './instalar';
 import { db, setMeta } from './db';
 import { importBackup, legacyData } from './backup';
 import { currentSession, onSyncStatus, scheduleSync, startAutoSync, supabase, type SyncStatus } from './sync';
@@ -114,6 +115,7 @@ supabase.auth.onAuthStateChange((event) => {
 });
 
 /* ---------- PWA ---------- */
+startInstall();
 const updateSW = registerSW({
   onNeedRefresh() {
     stickyToast('Nova versão disponível', 'Atualizar', () => updateSW(true));

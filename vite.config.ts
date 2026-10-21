@@ -17,6 +17,8 @@ export default defineConfig({
         short_name: 'Enche Aí',
         description: 'Saiba em qual posto vale abastecer, medido por quem abastece lá.',
         lang: 'pt-BR',
+        // identidade própria do app instalado (separada de instalações antigas e do app anterior)
+        id: base + 'app',
         start_url: base,
         scope: base,
         display: 'standalone',
