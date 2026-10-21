@@ -143,3 +143,25 @@ test('rota: posto com endereço numa rua do caminho entra mesmo com o ponto impr
   const rows = stationsFor([naRua, longe], { kind: 'rota', path, detourKm: 0.5, roads: ['Rodovia José Carlos Daux'] }, car, [], today);
   assert.deepEqual(rows.map((r) => [r.s.c, r.extraKm]), [['rua', 0]]);
 });
+
+test('Google: endereço da ANP abreviado e ponto longe ainda casa; rodovia pelo número', async () => {
+  const { matchScore, bestForStation, streetTokens, houseNumber } = await import('../src/postos.ts');
+  assert.deepEqual(streetTokens('Rodovia Jose Carlos Daux SC-401, 7467').sort(), ['carlos', 'daux', 'jose', 'sc401']);
+  assert.deepEqual(streetTokens('R. Gal. Eurico Gaspar Dutra, 1375').sort(), ['dutra', 'eurico', 'gaspar', 'general']);
+  assert.equal(houseNumber('Av Mauro Ramos, nº 2010 - Loja 1'), '2010');
+  assert.equal(houseNumber('Rodovia BR-101, Km 205'), '205');
+  assert.equal(houseNumber('Rua Nereu Ramos'), null);
+  const g = (id: string, name: string, address: string, dyKm: number) => ({ id, name, address, ...(({ la, lo }) => ({ lat: la, lon: lo }))(at(dyKm, 0)), rating: 4.4, count: 812 });
+  // ponto da ANP (geocodificação da rodovia) 4 km longe do posto real; endereço bate
+  const galo = { ...st('galo', at(0, 0), {}), n: 'Posto Galo', b: 'Petrobras', e: 'Rodovia Jose Carlos Daux SC-401, 7467', pg: 'n' as const };
+  assert.ok(matchScore(g('g', 'Posto Galo Petrobras', 'Rod. José Carlos Daux, 7467 - Santo Antônio de Lisboa, Florianópolis - SC', 4), galo) > 0);
+  // mesma rodovia, outro número e longe: não
+  assert.equal(matchScore(g('x', 'Posto Rodovia', 'Rod. José Carlos Daux, 120 - Florianópolis - SC', 4), galo), 0);
+  // "Gal." no Google, "Gal" na ANP; nome jurídico diferente do fantasia
+  const tal = { ...st('tal', at(0, 0), {}), n: 'Auto Posto Talisma', b: 'Bandeira branca', e: 'Rua Gal. Eurico Gaspar Dutra, 1375', pg: 'n' as const };
+  assert.ok(matchScore(g('t', 'Posto Estreito', 'R. Gen. Eurico Gaspar Dutra, 1375 - Estreito, Florianópolis - SC', 0.6), tal) > 0);
+  // busca feita para o posto: aceita o posto mais perto quando nada mais prova, sem trocar bandeira
+  const sem = { ...st('sem', at(0, 0), {}), n: 'Comercio de Combustiveis Ltda', b: 'Ipiranga', e: 'Rua Nova', pg: 'n' as const };
+  assert.equal(bestForStation([g('a', 'Posto Shell', 'Rua Velha', 0.1), g('b', 'Posto Avenida', 'Rua Nova, sn', 0.2)], sem)?.id, 'b');
+  assert.equal(bestForStation([g('a', 'Posto Shell', 'Outra rua', 0.1)], sem), null);
+});

@@ -2,7 +2,7 @@
 // Junta três fontes: o arquivo da ANP (cadastro, preços semanais, fiscalização), o Google (nota e foto,
 // guardados no aparelho por 7 dias) e a rede (preço pago, rendimento medido e avaliações de quem usa o app).
 import {
-  EVENT_LABEL, ageDays, bboxAround, bestWithoutPrice, goodShare, haversineKm, matchGoogle, recommend, sortRows, stationsFor, usageVerdict, yieldOf,
+  EVENT_LABEL, ageDays, bboxAround, bestWithoutPrice, goodShare, haversineKm, bestForStation, matchGoogle, nameTokens, recommend, sortRows, stationsFor, usageVerdict, yieldOf,
   type Base, type CarModel, type Fuel, type GoogleMatch, type GoogleStation, type LatLon, type OwnPrice, type PricePoint,
   type Recommendation, type Station, type StationLive, type StationRow, type StationsFile, type StationUse,
 } from '../postos';
@@ -810,13 +810,12 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     shown = null;
   });
 
-  async function lookupStation(s: Station) {
-    gTried.add(s.c);
-    const key = 'posto:' + s.c;
+  /** Busca de texto no Google só de postos de combustível, guardada por 7 dias no aparelho. */
+  async function searchFor(key: string, query: string, s: Station): Promise<GoogleStation[] | null> {
     let places = await gGet(key);
     if (!places && !gBlocked) {
       try {
-        const res = await googlePlaces<GoogleStation>({ mode: 'posto', query: 'posto de combustível ' + s.e + ', ' + s.m + ' SC', lat: s.la, lon: s.lo });
+        const res = await googlePlaces<GoogleStation>({ mode: 'posto', query, lat: s.la, lon: s.lo });
         googleOn = res.configured;
         if (res.configured) {
           places = res.places;
@@ -826,7 +825,22 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         await gError(e);
       }
     }
-    if (places) addMatches(matchGoogle(places, [s]));
+    return places ?? null;
+  }
+
+  /**
+   * Acha este posto no Google: primeiro pelo endereço da ANP (com bairro e cidade); se nada casar,
+   * pelo nome. O nome da ANP costuma ser a razão social, por isso o endereço vem antes.
+   */
+  async function lookupStation(s: Station) {
+    gTried.add(s.c);
+    const byAddr = await searchFor('posto:' + s.c, 'posto de combustível ' + s.e + ', ' + (s.br ? s.br + ', ' : '') + s.m + ' - SC', s);
+    let hit = byAddr ? bestForStation(byAddr, s) : null;
+    if (!hit && byAddr && nameTokens(s.n).length) {
+      const byName = await searchFor('posto-nome:' + s.c, s.n + ', ' + s.m + ' - SC', s);
+      hit = byName ? bestForStation(byName, s) : null;
+    }
+    if (hit) addMatches(new Map([[s.c, hit]]));
     if (shown?.c === s.c) {
       renderPosto(s);
       const gm = gmatch.get(s.c);

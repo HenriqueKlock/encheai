@@ -458,7 +458,7 @@ const BRANDS: Record<string, string> = { shell: 'Shell', raizen: 'Shell', ipiran
 function words(s: string): string[] {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 }
-function nameTokens(s: string) {
+export function nameTokens(s: string) {
   return words(s).filter((w) => w.length >= 3 && !STOP.has(w) && !BRANDS[w] && !/^\d+$/.test(w));
 }
 function brandOf(s: string): string | null {
@@ -466,23 +466,74 @@ function brandOf(s: string): string | null {
   return null;
 }
 
+// Endereços da ANP vêm abreviados ("Rod", "Gal", "Dep") e o Google às vezes também ("R.", "Av."):
+// expande antes de comparar, e ignora o tipo de via, que sozinho não prova nada.
+const ABBR: Record<string, string> = {
+  r: 'rua', rod: 'rodovia', av: 'avenida', avda: 'avenida', al: 'alameda', tv: 'travessa', trav: 'travessa', est: 'estrada', estr: 'estrada',
+  pc: 'praca', pca: 'praca', gal: 'general', gen: 'general', dep: 'deputado', dr: 'doutor', sen: 'senador', pres: 'presidente',
+  prof: 'professor', eng: 'engenheiro', cel: 'coronel', cap: 'capitao', ten: 'tenente', maj: 'major', mal: 'marechal', gov: 'governador',
+  sta: 'santa', sto: 'santo', s: 'sao', n: 'nossa', sra: 'senhora', pe: 'padre', vig: 'vigario', ver: 'vereador', des: 'desembargador',
+};
+const STREET_TYPES = new Set(['rua', 'rodovia', 'avenida', 'alameda', 'travessa', 'estrada', 'praca', 'servidao', 'beco', 'largo', 'via', 'acesso', 'marginal', 'contorno']);
+
+/** Palavras do endereço que identificam a via (rodovias viram "sc401", "br101"). */
+export function streetTokens(addr: string): string[] {
+  const hw = [...addr.matchAll(/\b(br|sc|rs|pr|sp)\s*-?\s*(\d{3})\b/gi)].map((m) => m[1].toLowerCase() + m[2]);
+  const ws = words(addr).map((w) => ABBR[w] ?? w).filter((w) => w.length >= 3 && !STREET_TYPES.has(w) && !STOP.has(w) && !/^\d+$/.test(w) && !/^(sc|br)\d{3}$/.test(w));
+  return [...new Set([...hw, ...ws])];
+}
+/** Número do endereço da ANP ("Rua X, 1619", "Rod SC-401, Km 5", "Av Y, nº 300 - Loja 2"). */
+export function houseNumber(addr: string): string | null {
+  const m = /,\s*(?:n[º°o.]?\s*|km\s*)?(\d{1,6})\b/i.exec(addr) ?? /\bkm\s*(\d{1,4})\b/i.exec(addr);
+  return m ? m[1] : null;
+}
+function addressEvidence(g: GoogleStation, s: Station) {
+  const gTokens = new Set(streetTokens(g.address));
+  const gWords = words(g.address);
+  const num = houseNumber(s.e);
+  const street = streetTokens(s.e.replace(/,.*$/, '')).filter((w) => gTokens.has(w)).length;
+  return { num: !!num && gWords.includes(num), street };
+}
+
 /** Pontua o quanto um lugar do Google parece ser este posto (endereço, nome, bandeira e distância). */
 export function matchScore(g: GoogleStation, s: Station): number {
   const d = haversineKm({ lat: s.la, lon: s.lo }, g);
-  const maxD = s.pg === 'n' ? 1.0 : 2.5; // ponto pelo bairro ou pela rua pode estar longe
+  const ev = addressEvidence(g, s);
+  const addr = ev.num && ev.street >= 1;
+  // endereço completo bate: o ponto da ANP pode estar bem longe (geocodificação de rodovia, bairro);
+  // sem isso, o ponto pela rua/número pode estar até 1 km longe e pelo bairro, até 2,5 km
+  const maxD = addr ? 15 : s.pg === 'n' ? 1.0 : 2.5;
   if (d > maxD) return 0;
-  const gAddr = words(g.address);
-  const num = (s.e.match(/,\s*(\d{1,6})\s*$/) ?? [])[1];
-  const street = nameTokens(s.e.replace(/,\s*\d+\s*$/, ''));
-  const addr = !!num && gAddr.includes(num) && street.some((w) => gAddr.includes(w));
   const gName = new Set(nameTokens(g.name));
   const overlap = nameTokens(s.n).filter((w) => gName.has(w)).length;
   const gBrand = brandOf(g.name), sBrand = s.b in { Shell: 1, Ipiranga: 1, Petrobras: 1, Ale: 1 } ? s.b : null;
-  let score = (addr ? 3 : 0) + Math.min(overlap, 2) * 1.5 + (gBrand && gBrand === sBrand ? 1 : 0);
+  const streetOnly = !addr && ev.street >= 2;
+  let score = (addr ? 3 : streetOnly ? 1.2 : 0) + Math.min(overlap, 2) * 1.5 + (gBrand && gBrand === sBrand ? 1 : 0);
   score += d < 0.1 ? 2 : d < 0.25 ? 1.2 : d < 0.5 ? 0.6 : 0;
   if (gBrand && sBrand && gBrand !== sBrand) score -= 2;
-  const evidence = addr || overlap > 0 || (gBrand && gBrand === sBrand) || d < 0.15;
+  const evidence = addr || overlap > 0 || streetOnly || (gBrand && gBrand === sBrand) || d < 0.15;
   return evidence && score >= 1.5 ? score : 0;
+}
+
+/**
+ * O melhor resultado de uma busca feita para ESTE posto (pelo endereço dele, só postos de combustível).
+ * Além das regras gerais, aceita o posto do Google mais perto do ponto quando está bem perto e não
+ * é de outra bandeira: a busca já veio filtrada pelo endereço.
+ */
+export function bestForStation(places: GoogleStation[], s: Station): GoogleMatch | null {
+  let best: GoogleStation | null = null, bestV = 0;
+  const sBrand = s.b in { Shell: 1, Ipiranga: 1, Petrobras: 1, Ale: 1 } ? s.b : null;
+  for (const g of places) {
+    if (!Number.isFinite(g.lat) || !Number.isFinite(g.lon)) continue;
+    let v = matchScore(g, s);
+    if (!v) {
+      const d = haversineKm({ lat: s.la, lon: s.lo }, g);
+      const gBrand = brandOf(g.name);
+      if (d <= (s.pg === 'n' ? 0.35 : 0.8) && !(gBrand && sBrand && gBrand !== sBrand)) v = 1 - d;
+    }
+    if (v > bestV) { bestV = v; best = g; }
+  }
+  return best ? { id: best.id, name: best.name, rating: best.rating, count: best.count, lat: best.lat, lon: best.lon, photo: best.photo ?? null } : null;
 }
 
 /** Liga cada lugar do Google a no máximo um posto da ANP (os pares mais parecidos primeiro). */
