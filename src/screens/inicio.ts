@@ -91,7 +91,7 @@ export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel
     );
   }
 
-  /* ---------- uma semana depois: como o carro andou com aquele combustível? ---------- */
+  /* ---------- no dia seguinte: como o carro andou com aquele combustível? ---------- */
   const DISMISS = 'depois_dispensado';
   const dismissed = (): string[] => { try { return JSON.parse(localStorage.getItem(DISMISS) ?? '[]'); } catch { return []; } };
   function renderDepois() {
@@ -101,7 +101,7 @@ export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel
     const name = (f.station ?? 'posto').split(' · ')[0];
     const ago = Math.round((Date.parse(todayISO()) - Date.parse(f.date)) / 864e5);
     el.innerHTML =
-      '<div class="card depois-card"><span class="l">Uma semana depois</span><span class="t">Como o carro andou com o combustível do ' + esc(name) + '?</span>' +
+      '<div class="card depois-card"><span class="l">Depois de abastecer</span><span class="t">Como o carro andou com o combustível do ' + esc(name) + '?</span>' +
       '<span class="hint">Abastecido em ' + esc(f.date.slice(8, 10) + '/' + f.date.slice(5, 7)) + ' (' + ago + ' dias atrás). Ajuda a saber a qualidade do combustível de cada posto.</span>' +
       '<div class="after-opts">' + AFTER_OPTIONS.map(([v, t]) => '<button type="button" data-home-after="' + v + '" data-fill="' + esc(f.id) + '">' + t + '</button>').join('') + '</div>' +
       '<button type="button" class="link-btn muted" data-home-dismiss="' + esc(f.id) + '">Agora não</button></div>';

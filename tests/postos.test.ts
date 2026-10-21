@@ -165,3 +165,45 @@ test('Google: endereço da ANP abreviado e ponto longe ainda casa; rodovia pelo 
   assert.equal(bestForStation([g('a', 'Posto Shell', 'Rua Velha', 0.1), g('b', 'Posto Avenida', 'Rua Nova, sn', 0.2)], sem)?.id, 'b');
   assert.equal(bestForStation([g('a', 'Posto Shell', 'Outra rua', 0.1)], sem), null);
 });
+
+test('recomendação pesa a confiabilidade: o mais barato com nota ruim no Google e na ANP não é o sugerido', async () => {
+  const { weakPoints } = await import('../src/postos.ts');
+  const limpo = { n: 3, ult: '2026-03-01', ev: [] as [string, 'I', string][] };
+  const sujo = { n: 4, ult: '2025-02-01', ev: [['2025-02-01', 'I', 'volume a menor'], ['2024-06-01', 'I', 'preço não informado']] as [string, 'I', string][] };
+  const stations = [
+    st('barato', at(1, 0), { gc: [6.49, '2026-10-15'] }, sujo),
+    st('bom', at(1.5, 0), { gc: [6.59, '2026-10-15'] }, limpo),
+  ];
+  const google = new Map([['barato', { rating: 3.3, count: 410 }], ['bom', { rating: 4.7, count: 820 }]]);
+  const rows = stationsFor(stations, { kind: 'ponto', at: base, radiusKm: 6 }, { ...car, fuels: ['gasolina'] }, [], today, google);
+  const rec = recommend(rows);
+  assert.equal(rec.best!.s.c, 'bom');
+  assert.equal(rec.cheapest!.s.c, 'barato');
+  assert.ok(rec.best!.quality > rec.cheapest!.quality);
+  const w = weakPoints(rec.cheapest!, today);
+  assert.ok(w.some((x) => x.startsWith('Google 3,3')) && w.some((x) => x.startsWith('ANP')), w.join(' | '));
+  // diferença grande de preço ainda vence: R$ 0,40/l a menos compensa
+  const rows2 = stationsFor([st('barato', at(1, 0), { gc: [6.19, '2026-10-15'] }, sujo), stations[1]], { kind: 'ponto', at: base, radiusKm: 6 }, { ...car, fuels: ['gasolina'] }, [], today, google);
+  assert.equal(recommend(rows2).best!.s.c, 'barato');
+});
+
+test('recomendação usa a sua experiência: falha relatada, suas estrelas e o rendimento dos seus tanques', () => {
+  const stations = [st('X', at(1, 0), { gc: [6.49, '2026-10-15'] }, { n: 1, ult: '2026-01-01', ev: [] }), st('Y', at(1, 0), { gc: [6.55, '2026-10-15'] }, { n: 1, ult: '2026-01-01', ev: [] })];
+  const b = { kind: 'ponto' as const, at: base, radiusKm: 6 };
+  const fuels = { ...car, fuels: ['gasolina' as const] };
+  assert.equal(recommend(stationsFor(stations, b, fuels, [], today)).best!.s.c, 'X');
+  const falhou = new Map([['X', { stars: null, starsN: 0, falhou: 1, yieldR: null }]]);
+  assert.equal(recommend(stationsFor(stations, b, fuels, [], today, undefined, undefined, falhou)).best!.s.c, 'Y');
+  const rendeMais = new Map([['Y', { stars: 5, starsN: 2, falhou: 0, yieldR: 1.04 }]]);
+  const r = recommend(stationsFor(stations, b, fuels, [], today, undefined, undefined, rendeMais));
+  assert.equal(r.best!.s.c, 'Y');
+  assert.equal(r.best!.yieldSrc, 'voce');
+});
+
+test('preço velho pesa: ANP de 3 semanas atrás perde para um preço desta semana um pouco mais caro', () => {
+  const ok = { n: 1, ult: '2026-01-01', ev: [] as [string, 'I', string][] };
+  const rows = stationsFor([st('velho', at(1, 0), { gc: [6.45, '2026-09-29'] }, ok), st('novo', at(1, 0), { gc: [6.55, '2026-10-17'] }, ok)], { kind: 'ponto', at: base, radiusKm: 6 }, { ...car, fuels: ['gasolina'] }, [], today);
+  const rec = recommend(rows);
+  assert.equal(rec.best!.s.c, 'novo');
+  assert.equal(rec.cheapest!.s.c, 'velho');
+});

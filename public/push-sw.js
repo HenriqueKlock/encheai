@@ -2,7 +2,7 @@
 self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification('Como o carro andou?', {
-      body: 'Faz uma semana do último abastecimento. Conte o que achou do combustível — leva 2 segundos.',
+      body: 'Você abasteceu ontem. Conte como o carro andou com esse combustível — leva 2 segundos.',
       icon: 'icons/icon-192.png',
       badge: 'icons/icon-192.png',
       tag: 'encheai-depois',

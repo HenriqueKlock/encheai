@@ -718,3 +718,17 @@ a.next-card { text-decoration: none; }
 .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .shot button { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 12px; border: 0; background: rgba(14, 17, 22, .75); color: #fff; font-size: 16px; line-height: 24px; padding: 0; }
 #relato-add { align-self: flex-start; }
+
+/* recomendação: o menor preço aparece à parte quando não é o sugerido */
+.rec-cheap { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; text-align: left; margin-top: -4px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.rec-cheap .t { font-size: 15px; font-weight: 600; }
+.rec-cheap .s { font-size: 13px; color: var(--muted); }
+.tag.cheap { color: #9A3412; border-color: #FDBA74; background: #FFF7ED; }
+.tag.best { color: var(--ok-ink); border-color: var(--ok-dot); }
+.st-row .tag.cheap, .st-row .tag.best { vertical-align: 2px; margin-right: 4px; }
+.rec-card .f.cheap-f { color: #FDBA74; }
+.pin.cheap span { border-color: #F97316; border-width: 2px; }
+.pin.cheap em { position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -3px); padding: 1px 6px; border-radius: 6px; background: #EA580C; color: #FFFFFF; font: 700 10px var(--font); font-style: normal; letter-spacing: .2px; white-space: nowrap; }
+@media (prefers-color-scheme: dark) {
+  .tag.cheap { color: #FDBA74; border-color: #9A3412; background: transparent; }
+}

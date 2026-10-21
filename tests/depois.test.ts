@@ -22,19 +22,20 @@ test('só pergunta com posto, até 30 dias e sem resposta', () => {
   assert.equal(canAskAfter(f('a', '2026-10-01', 1, 'P1'), today, { after_effect: 'normal' }), false);
 });
 
-test('no histórico: depois de dois dias ou quando já abasteceu de novo', () => {
+test('no histórico: no dia seguinte ou quando já abasteceu de novo', () => {
   const logs = [f('a', '2026-10-20', 1000, 'P1'), f('b', '2026-10-21', 1300, 'P2')];
   assert.equal(usedEnough(logs[0], logs, today), true); // já abasteceu de novo
   assert.equal(usedEnough(logs[1], logs, today), false); // hoje
   assert.equal(usedEnough(f('z', '2026-10-19', 1, 'P1'), [], today), true);
 });
 
-test('aviso no Início: último abastecimento do carro, de 7 a 30 dias, sem resposta e não dispensado', () => {
+test('aviso no Início: último abastecimento do carro, de 1 a 30 dias, sem resposta e não dispensado', () => {
   const logs = [f('a', '2026-10-01', 1000, 'P1'), f('b', '2026-10-12', 1400, 'P1'), f('c', '2026-10-13', 500, 'P5', 'c2')];
   assert.equal(pendingAfter(logs, {}, today)?.id, 'c'); // o mais recente entre os carros
   assert.equal(pendingAfter(logs, { c: { after_effect: 'falhou' } }, today)?.id, 'b');
   assert.equal(pendingAfter(logs, {}, today, ['c', 'b']), null);
-  assert.equal(pendingAfter([f('h', '2026-10-18', 1, 'P1')], {}, today), null); // só 3 dias
+  assert.equal(pendingAfter([f('h', today, 1, 'P1')], {}, today), null); // abasteceu hoje
+  assert.equal(pendingAfter([f('h', '2026-10-20', 1, 'P1')], {}, today)?.id, 'h'); // ontem: já pergunta
 });
 
 test('tanque comparado ao normal do carro', () => {

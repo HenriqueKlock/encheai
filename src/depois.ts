@@ -1,5 +1,5 @@
 // "Como o carro andou depois?": a pergunta é sempre sobre o combustível de UM abastecimento (o posto dele),
-// feita no próximo abastecimento, pelo histórico ou uma semana depois (aviso no Início e notificação).
+// feita no próximo abastecimento, pelo histórico ou no dia seguinte (aviso no Início e notificação).
 // Puro: testado em tests/depois.test.ts.
 
 export type AfterEffect = 'normal' | 'melhor' | 'falhou' | 'rendeu_menos';
@@ -15,7 +15,7 @@ export const AFTER_SHORT: Record<AfterEffect, string> = { normal: 'carro normal'
 /** Janela em que o servidor aceita avaliar um abastecimento. */
 export const MAX_DAYS = 30;
 /** O aviso no Início (e a notificação) aparece a partir deste dia. */
-export const REMIND_DAYS = 7;
+export const REMIND_DAYS = 1;
 
 export interface FillLike { id: string; vehicle_id: string; date: string; odometer_km: number; station_id?: string | null; deleted_at?: string | null }
 export interface RatingLike { after_effect?: AfterEffect | null }
@@ -34,13 +34,13 @@ export function canAskAfter(f: FillLike, today: string, rating?: RatingLike | nu
   return !!f.station_id && !f.deleted_at && days(f.date, today) <= MAX_DAYS && !rating?.after_effect;
 }
 
-/** O carro já rodou com esse combustível (dois dias depois, ou já abasteceu de novo)? */
+/** O carro já rodou com esse combustível (no dia seguinte, ou já abasteceu de novo)? */
 export function usedEnough<T extends FillLike>(f: FillLike, logs: T[], today: string): boolean {
-  return days(f.date, today) >= 2 || logs.some((x) => x.vehicle_id === f.vehicle_id && x.id !== f.id && !x.deleted_at && order(f, x) < 0);
+  return days(f.date, today) >= REMIND_DAYS || logs.some((x) => x.vehicle_id === f.vehicle_id && x.id !== f.id && !x.deleted_at && order(f, x) < 0);
 }
 
 /**
- * Para o aviso no Início: o último abastecimento de cada carro, com posto, de 7 a 30 dias atrás e sem resposta.
+ * Para o aviso no Início: o último abastecimento de cada carro, com posto, de 1 a 30 dias atrás e sem resposta.
  * Se já houve outro abastecimento depois, a pergunta apareceu ao registrar; não insiste.
  */
 export function pendingAfter<T extends FillLike>(logs: T[], ratings: Record<string, RatingLike>, today: string, dismissed: string[] = []): T | null {

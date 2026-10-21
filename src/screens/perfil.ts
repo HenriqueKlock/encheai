@@ -54,7 +54,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
       : push === 'install' ? 'No iPhone, instale o app na tela inicial primeiro (Compartilhar › Adicionar à Tela de Início).'
       : push === 'unsupported' ? 'Este navegador não recebe notificações.'
       : push === 'blocked' ? 'As notificações estão bloqueadas para o app. Libere nas configurações do navegador.'
-      : 'Uma semana depois de abastecer, uma notificação pergunta como o carro andou com aquele combustível.';
+      : 'No dia seguinte ao abastecimento, às 19h, uma notificação pergunta como o carro andou com aquele combustível.';
     const can = S.prefs.contribute && (push === 'on' || push === 'off');
     return '<div class="card"><div class="switch-row"><div class="t"><span>Lembrete do combustível</span><span>' + esc(hint) + '</span></div>' +
       '<input type="checkbox" class="switch" role="switch" id="p-push" aria-label="Lembrete do combustível"' + (push === 'on' ? ' checked' : '') + (can ? '' : ' disabled') + '></div></div>';
@@ -134,7 +134,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
       if (el.checked) {
         const err = await enablePush();
         if (err) toast(err);
-        else toast('Pronto: uma semana depois de cada abastecimento chega um lembrete.');
+        else toast('Pronto: no dia seguinte a cada abastecimento chega um lembrete às 19h.');
       } else {
         await disablePush();
         toast('Lembretes desligados neste aparelho.');

@@ -1,7 +1,7 @@
 // Lembretes por notificação (Web Push, padrão VAPID, sem conteúdo cifrado: o aviso é sempre o mesmo e
 // o app mostra o resto). GET …/lembretes/chave devolve a chave pública para o aparelho se inscrever.
 // POST …/lembretes (chamado uma vez por dia pelo pg_cron) envia os lembretes devidos: abastecimento com
-// posto de 7 a 10 dias atrás, sem resposta do "como o carro andou". Cada abastecimento recebe um lembrete
+// posto de 1 a 5 dias atrás, sem resposta do "como o carro andou". Cada abastecimento recebe um lembrete
 // no máximo, então chamar de novo não repete nada. As chaves VAPID são geradas aqui e ficam no banco
 // (tabela push_keys, só a chave de serviço lê); nunca passam pelo repositório. O POST só vale com o cabeçalho
 // x-lembretes igual ao segredo da mesma tabela, que só o próprio banco (o pg_cron) conhece.

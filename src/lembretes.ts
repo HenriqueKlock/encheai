@@ -1,4 +1,4 @@
-// Lembrete por notificação uma semana depois do abastecimento ("como o carro andou?").
+// Lembrete por notificação no dia seguinte ao abastecimento ("como o carro andou?").
 // O aparelho se inscreve no serviço de push do próprio navegador com a chave pública do servidor
 // (função `lembretes`) e guarda a inscrição em push_subscriptions, que só a própria conta vê.
 import { SUPABASE_URL } from './config';

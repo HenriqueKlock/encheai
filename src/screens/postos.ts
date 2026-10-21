@@ -2,8 +2,8 @@
 // Junta três fontes: o arquivo da ANP (cadastro, preços semanais, fiscalização), o Google (nota e foto,
 // guardados no aparelho por 7 dias) e a rede (preço pago, rendimento medido e avaliações de quem usa o app).
 import {
-  EVENT_LABEL, ageDays, bboxAround, bestWithoutPrice, goodShare, haversineKm, bestForStation, matchGoogle, nameTokens, recommend, starsOf, sortRows, stationsFor, usageVerdict, yieldOf,
-  type Base, type CarModel, type Fuel, type GoogleMatch, type GoogleStation, type LatLon, type OwnPrice, type PricePoint,
+  EVENT_LABEL, ageDays, bboxAround, bestWithoutPrice, goodShare, haversineKm, bestForStation, matchGoogle, nameTokens, recommend, starsOf, sortRows, stationsFor, usageVerdict, weakPoints, yieldOf,
+  type Base, type CarModel, type Fuel, type GoogleMatch, type GoogleStation, type LatLon, type OwnPrice, type Personal, type PricePoint,
   type Recommendation, type Station, type StationLive, type StationRow, type StationsFile, type StationUse,
 } from '../postos';
 import { gps, loadStations, route, type FoundPlace, type Route } from '../lugares';
@@ -198,6 +198,23 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   const own = (): OwnPrice[] =>
     S.logs.filter((f) => f.station_id && (f.fuel === 'gasolina' || f.fuel === 'etanol')).map((f) => ({ station_id: f.station_id!, fuel: f.fuel as Fuel, price: f.price_per_l || f.total_brl / f.liters, date: f.date }));
   const usage = (): StationUse[] => stationUsage(carLogs(), carIntervals(), todayISO());
+  /** O que você mesmo viveu em cada posto: suas estrelas (12 meses), falhas relatadas (6 meses) e o rendimento dos seus tanques. */
+  function mine(): Map<string, Personal> {
+    const today = todayISO();
+    const m = new Map<string, Personal & { sum: number }>();
+    const get = (c: string) => m.get(c) ?? (m.set(c, { stars: null, starsN: 0, falhou: 0, yieldR: null, sum: 0 }), m.get(c)!);
+    const logs = new Map(S.logs.map((f) => [f.id, f]));
+    for (const r of Object.values(S.ratings)) {
+      const f = logs.get(r.fuel_log_id);
+      if (!f || f.deleted_at || !r.station_id) continue;
+      const age = ageDays(f.date, today);
+      const p = get(r.station_id);
+      if (r.stars && age <= 365) { p.sum += r.stars; p.starsN++; p.stars = p.sum / p.starsN; }
+      if (r.after_effect === 'falhou' && age <= 180) p.falhou++;
+    }
+    for (const u of usage()) if (u.tanks >= 2 && u.delta != null) get(u.station_id).yieldR = 1 + u.delta;
+    return new Map([...m].map(([k, { sum: _s, ...v }]) => [k, v]));
+  }
 
   /** Modelo do carro com o filtro de combustível aplicado. */
   function model(): CarModel {
@@ -212,7 +229,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return true;
   }
   function compute(b: Base, filtered = true): { rows: StationRow[]; rec: Recommendation } {
-    const all = stationsFor(stations(), b, model(), own(), todayISO(), google, network());
+    const all = stationsFor(stations(), b, model(), own(), todayISO(), google, network(), mine());
     const rows = filtered ? all.filter(passes) : all;
     return { rows, rec: recommend(rows) };
   }
@@ -294,9 +311,10 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       : '<div class="rec-tiles"><div><span>Custo por km</span><b>' + brl(best.costPerKm) + '</b></div><div><span>Para rodar ' + Math.round(car.model.kmTank) + ' km</span><b>' + brl(best.cost) + '</b></div></div>';
     const foot = [
       car.model.fuels.length > 1 ? 'Etanol rende ' + Math.round((car.model.kmlE / car.model.kmlG) * 100) + '% da gasolina no ' + esc(car.name) + (car.model.measured ? ' (medido)' : ' (estimado)') : '',
-      best.yieldR != null ? 'já conta o rendimento medido do posto' : '',
+      best.yieldR != null ? (best.yieldSrc === 'voce' ? 'já conta o rendimento dos seus tanques de lá' : 'já conta o rendimento medido do posto') : '',
       'conta ida e volta',
     ].filter(Boolean).join(' · ');
+    const cheap = cheapNote(rec, car.model.kmTank);
     const warn = rec.cheaperUnsafe
       ? '<p class="rec-warn">' + ICON.warn + '<span>' + esc(nm(rec.cheaperUnsafe.s)) + ' sairia mais barato, mas ficou de fora: ' + (rec.cheaperUnsafe.rel.recentSerious ? 'teve autuação séria da ANP nos últimos 12 meses.' : 'confiabilidade baixa.') + '</span></p>'
       : '';
@@ -305,7 +323,21 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       '<span class="t">' + FUEL[best.fuel] + ' no ' + esc(nm(best.s)) + '</span>' +
       '<span class="s">' + brl(best.price.price) + '/l · ' + dist + ' · ' + priceWho(best.price) + '</span>' +
       (netBadges(best.s.c ? network().get(best.s.c) ?? null : null) ? '<span class="rec-badges">' + netBadges(network().get(best.s.c) ?? null, 3) + '</span>' : '') +
-      tiles + '<span class="f">' + foot + '</span></button>' + warn
+      tiles + '<span class="f">' + foot + '</span></button>' + cheap + warn
+    );
+  }
+  /** Quando o mais barato não é o sugerido: mostra o menor preço e por que ficou atrás. */
+  function cheapNote(rec: Recommendation, kmTank: number, short = false) {
+    const c = rec.cheapest, b = rec.best;
+    if (!c || !b || c.s.c === b.s.c) return '';
+    const save = b.cost - c.cost;
+    const weak = weakPoints(c, todayISO());
+    const why = weak.length ? weak.slice(0, 3).join(' · ') : 'nota ' + fmt(c.quality, 1) + ' contra ' + fmt(b.quality, 1) + ' do sugerido';
+    if (short) return 'Menor preço: ' + nm(c.s) + ' (' + FUEL[c.fuel].toLowerCase() + ' a ' + brl(c.price.price) + ', ≈ ' + brl(save) + ' a menos) · ' + why + '.';
+    return (
+      '<button type="button" class="rec-cheap" data-posto="' + c.s.c + '"><span class="tag cheap">Menor preço</span>' +
+      '<span class="t">' + FUEL[c.fuel] + ' no ' + esc(nm(c.s)) + ' · ' + brl(c.price.price) + '/l</span>' +
+      '<span class="s">' + (save >= 0.5 ? '≈ ' + brl(save) + ' a menos para rodar ' + Math.round(kmTank) + ' km, mas ' : 'Quase o mesmo custo, mas ') + esc(why) + '.</span></button>'
     );
   }
   function priceWho(pp: PricePoint) {
@@ -349,9 +381,9 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return '<div class="card center"><p class="hint">' + txt + '</p><a class="btn primary" href="#/locais">Cadastrar casa e trabalho</a></div>';
   }
 
-  function stationRow(r: StationRow, b: Base, isBest: boolean) {
+  function stationRow(r: StationRow, b: Base, isBest: boolean, isCheap = false) {
     const fav = favorite();
-    const mineTag = fav?.s.c === r.s.c ? '<span class="tag mine">seu posto</span> ' : '';
+    const mineTag = (isBest ? '<span class="tag best">sugerido</span> ' : '') + (isCheap ? '<span class="tag cheap">menor preço</span> ' : '') + (fav?.s.c === r.s.c ? '<span class="tag mine">seu posto</span> ' : '');
     const p = r.best?.price ?? r.gas ?? r.eth;
     const m = model();
     const gasOn = m.fuels.includes('gasolina'), ethOn = m.fuels.includes('etanol');
@@ -374,7 +406,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return null;
   }
   function rowFor(s: Station, b: Base): StationRow {
-    return stationsFor([s], b.kind === 'ponto' ? { ...b, radiusKm: 9999 } : { ...b, detourKm: 9999 }, model(), own(), todayISO(), google, network())[0];
+    return stationsFor([s], b.kind === 'ponto' ? { ...b, radiusKm: 9999 } : { ...b, detourKm: 9999 }, model(), own(), todayISO(), google, network(), mine())[0];
   }
 
   function myCard(b: Base, rec: Recommendation) {
@@ -467,7 +499,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       html += '<div class="card center"><p class="hint">' + (active ? 'Nenhum posto passa nos filtros escolhidos. Tire um filtro ou aumente a distância.' : 'Nenhum posto ' + (rs.base.kind === 'rota' ? 'tão perto do caminho' : 'neste raio') + '. Aumente a distância acima.') + '</p></div>';
     } else {
       html += '<div class="sec-head"><span>' + pl(rows.length, 'posto', 'postos') + '</span><span class="hint">preço mais recente primeiro</span></div>';
-      html += '<div class="list-card">' + sorted.slice(0, limit).map((r) => stationRow(r, rs.base, r.s.c === rec.best?.s.c)).join('') + (sorted.length > limit ? '<button type="button" class="list-more" data-act="all">Mostrar todos (' + sorted.length + ')</button>' : '') + '</div>';
+      html += '<div class="list-card">' + sorted.slice(0, limit).map((r) => stationRow(r, rs.base, r.s.c === rec.best?.s.c, r.s.c === rec.cheapest?.s.c)).join('') + (sorted.length > limit ? '<button type="button" class="list-more" data-act="all">Mostrar todos (' + sorted.length + ')</button>' : '') + '</div>';
     }
     body.innerHTML = html + sourcesNote();
     drawMap(rs, rows, rec);
@@ -477,7 +509,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (!file) return '';
     const w = file.fontes.lpc_semanas[0];
     const g = gBlocked ? esc(gBlocked) + ' As notas já buscadas continuam valendo.' : googleOn === true ? 'Notas do Google atualizadas uma vez por semana.' : googleOn === false ? 'Notas do Google ainda não configuradas.' : '';
-    return '<p class="foot-note">Preços: o que a rede pagou nos últimos 7 dias, os seus abastecimentos e a pesquisa semanal da ANP' + (w ? ' (mais recente: ' + dm(w[0]) + ' a ' + dm(w[1]) + ')' : '') + '. Confiabilidade: fiscalização da ANP nos últimos 5 anos, notas do Google e o rendimento medido pela rede. ' + g + ' Distâncias aproximadas.</p>';
+    return '<p class="foot-note">Preços: o que a rede pagou nos últimos 7 dias, os seus abastecimentos e a pesquisa semanal da ANP' + (w ? ' (mais recente: ' + dm(w[0]) + ' a ' + dm(w[1]) + ')' : '') + '. Sugerido: o menor custo para rodar (preço, combustível, desvio e rendimento medido), pesado pela confiabilidade (fiscalização da ANP nos últimos 5 anos, notas do Google, avaliações da rede e as suas) e pela idade do preço; o menor preço aparece à parte. ' + g + ' Distâncias aproximadas.</p>';
   }
 
   /* ---------- mapa da aba ---------- */
@@ -525,7 +557,10 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     }
     // principais opções ao redor; a sugerida fica em destaque, por cima das outras
     const bestId = rec.best?.s.c;
+    const cheapId = rec.cheapest && rec.cheapest.s.c !== bestId ? rec.cheapest.s.c : null;
     const picks = mapPicks(rows, mapMode, bestId);
+    const cheapRow = cheapId ? rows.find((r) => r.s.c === cheapId) : undefined;
+    if (cheapRow && !picks.includes(cheapRow)) picks.push(cheapRow);
     for (const r of picks) pts.push([r.s.la, r.s.lo]);
     const key = base + '|' + radius + '|' + rows.length + '|' + mapMode;
     if (refit && key !== mapKey && pts.length) {
@@ -536,7 +571,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     // sem etiquetas encavaladas: a sugerida primeiro, depois na ordem da lista; aproximar mostra as escondidas
     const placed: { x: number; y: number }[] = [];
     let hidden = 0, staleShown = false;
-    const order = picks.slice().sort((a, b) => Number(b.s.c === bestId) - Number(a.s.c === bestId));
+    const rank = (r: StationRow) => (r.s.c === bestId ? 2 : r.s.c === cheapId ? 1 : 0);
+    const order = picks.slice().sort((a, b) => rank(b) - rank(a));
     for (const r of order) {
       const pt = pmap.latLngToContainerPoint([r.s.la, r.s.lo]);
       if (placed.some((q) => Math.abs(q.x - pt.x) < 58 && Math.abs(q.y - pt.y) < 28)) { hidden++; continue; }
@@ -546,8 +582,9 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       const lvl = r.rel.level;
       let cls = 'pin';
       let label: string;
+      const cheap = r.s.c === cheapId;
       if (mapMode === 'preco') {
-        const o = best ? rec.best! : r.best!;
+        const o = best ? rec.best! : cheap ? rec.cheapest! : r.best!;
         cls += ' ' + (o.fuel === 'etanol' ? 'eth' : 'gas') + (o.stale ? ' old' : '') + (lvl === 'evitar' ? ' bad' : '');
         label = fmt(o.price.price, 2);
       } else {
@@ -555,8 +592,9 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         label = '★ ' + fmt(r.rel.score, 1);
       }
       if (best) cls += ' best';
-      const icon = Lf.divIcon({ className: cls, html: '<span>' + (best ? '<em>sugerido</em>' : '') + label + '</span>', iconSize: undefined as any, iconAnchor: [20, 14] });
-      Lf.marker([r.s.la, r.s.lo], { icon, title: nm(r.s), keyboard: false, zIndexOffset: best ? 1000 : 0 }).on('click', () => openPosto(r.s.c)).addTo(layer!);
+      if (cheap) cls += ' cheap';
+      const icon = Lf.divIcon({ className: cls, html: '<span>' + (best ? '<em>sugerido</em>' : cheap ? '<em>menor preço</em>' : '') + label + '</span>', iconSize: undefined as any, iconAnchor: [20, 14] });
+      Lf.marker([r.s.la, r.s.lo], { icon, title: nm(r.s), keyboard: false, zIndexOffset: best ? 1000 : cheap ? 900 : 0 }).on('click', () => openPosto(r.s.c)).addTo(layer!);
     }
     const stale = staleShown;
     $('p-map-legend').textContent = !picks.length
@@ -971,13 +1009,14 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       const o = rowFor(fav.s, rs.base).best;
       if (o && !o.stale && o.cost - b.cost > 0.5) favTxt = 'No seu posto de sempre sairia ≈ ' + brl(o.cost - b.cost) + ' a mais.';
     }
+    const cheapTxt = cheapNote(rec, carInfo().model.kmTank, true);
     const badges = netBadges(b.s.c ? network().get(b.s.c) ?? null : null, 2);
     el.innerHTML =
       '<div class="rec-card"><button type="button" class="rec-main" data-home-posto="' + b.s.c + '" data-base="' + kind + '"><span class="l">' + where + '</span>' +
       '<span class="t">' + FUEL[b.fuel] + ' no ' + esc(nm(b.s)) + '</span>' +
       '<span class="s">' + brl(b.price.price) + '/l · ' + dist + (rec.bestOther ? ' · ' + brl(rec.bestOther.cost - b.cost) + ' a menos que ' + FUEL[rec.bestOther.fuel].toLowerCase() : '') + '</span>' +
       '<span class="rec-badges"><span class="nb on-dark ' + b.price.src + '">' + priceWho(b.price) + '</span>' + badges.replace(/class="nb/g, 'class="nb on-dark') + '<span class="nb on-dark">ANP ' + fmt(b.rel.anp, 1) + '</span></span>' +
-      (favTxt ? '<span class="f">' + esc(favTxt) + '</span>' : '') + '</button>' +
+      (favTxt ? '<span class="f">' + esc(favTxt) + '</span>' : '') + (cheapTxt ? '<span class="f cheap-f">' + esc(cheapTxt) + '</span>' : '') + '</button>' +
       '<a class="more" href="#/postos" data-home-base="' + kind + '">Ver outros postos ' + ICON.chev + '</a></div>';
   }
   $('home-rec').addEventListener('click', (e) => {

@@ -173,6 +173,8 @@ export interface Reliability {
   netWarn: 'rendimento' | 'bomba' | 'falhas' | null;
   /** Média das estrelas de quem abasteceu (com 5 ou mais notas). */
   stars: number | null;
+  /** Nota do Google como aparece lá (sem o ajuste), quando houver. */
+  googleRaw: { rating: number; count: number } | null;
 }
 
 /**
@@ -214,7 +216,7 @@ export function reliability(s: Station, today: string, g?: { rating: number; cou
   if (netWarn) score = Math.min(score, 3.4);
   score = Math.round(score * 10) / 10;
   const level = score >= 3.8 ? 'ok' : score >= 3 ? 'atencao' : 'evitar';
-  return { score, anp: Math.round(anp * 10) / 10, google: google == null ? null : Math.round(google * 10) / 10, level, recentSerious, infractions: inf, interdictions: intd, visits: s.f?.n ?? 0, netWarn, stars: st ? Math.round(st.avg * 10) / 10 : null };
+  return { score, anp: Math.round(anp * 10) / 10, google: google == null ? null : Math.round(google * 10) / 10, level, recentSerious, infractions: inf, interdictions: intd, visits: s.f?.n ?? 0, netWarn, stars: st ? Math.round(st.avg * 10) / 10 : null, googleRaw: google == null ? null : { rating: g!.rating, count: g!.count } };
 }
 
 /* ---------- preços ---------- */
@@ -271,6 +273,65 @@ export interface Option {
   yieldR: number | null;
   rel: Reliability;
   stale: boolean;
+  /** De onde veio o rendimento aplicado: rede (todos) ou os seus tanques. */
+  yieldSrc: 'rede' | 'voce' | null;
+  /** Nota usada na recomendação (0–5): confiabilidade com a sua experiência no posto. */
+  quality: number;
+  /** Custo ajustado (R$): custo + o que a confiabilidade e a idade do preço tiram. Menor é melhor. */
+  value: number;
+  personal: Personal | null;
+}
+
+/** O que você mesmo viveu no posto. */
+export interface Personal {
+  /** Média das suas estrelas para o posto (12 meses) e quantas. */
+  stars: number | null;
+  starsN: number;
+  /** Quantas vezes você disse que o carro falhou depois de abastecer lá (6 meses). */
+  falhou: number;
+  /** Rendimento dos seus tanques que começaram lá vs. a sua média (1,03 = 3% acima), com 2 tanques ou mais. */
+  yieldR: number | null;
+}
+
+/** Cada ponto de nota abaixo de 5 vale 3% do custo: nota 3,5 precisa sair ~4,5% mais barato para empatar com nota 5. */
+export const QUALITY_PCT = 0.03;
+/** Preço com mais de 7 dias perde 0,25% por dia (até 4%): pode já ter mudado. */
+export const PRICE_AGE_PCT = 0.0025;
+
+/** Nota do posto para a recomendação: confiabilidade (ANP, Google, rede) mais o atendimento e a sua experiência. */
+export function qualityOf(rel: Reliability, live?: StationLive | null, p?: Personal | null): number {
+  let q = rel.score;
+  const at = goodShare(live, 'atendimento');
+  if (at != null && at < 0.5) q -= 0.2;
+  if (p?.stars != null && p.starsN > 0) {
+    const w = p.starsN >= 2 ? 0.3 : 0.15;
+    q = (1 - w) * q + w * p.stars;
+  }
+  if (p && p.falhou > 0) q = Math.min(q, 3);
+  return Math.max(0, Math.min(5, Math.round(q * 100) / 100));
+}
+
+export function valueOf(cost: number, quality: number, priceAge: number): number {
+  return cost * (1 + QUALITY_PCT * (5 - quality) + Math.min(0.04, PRICE_AGE_PCT * Math.max(0, priceAge - 7)));
+}
+
+const n1 = (x: number) => x.toFixed(1).replace('.', ',');
+/** Pontos fracos de uma opção, em frases curtas (para explicar por que não é a sugerida). */
+export function weakPoints(o: Option, today: string): string[] {
+  const r = o.rel, out: string[] = [];
+  if (r.recentSerious) out.push('autuação séria da ANP nos últimos 12 meses');
+  else if (r.anp < 4.2 && r.infractions + r.interdictions > 0) out.push('ANP: ' + (r.infractions + r.interdictions) + (r.infractions + r.interdictions === 1 ? ' ocorrência' : ' ocorrências') + ' em 5 anos');
+  if (r.googleRaw && r.googleRaw.rating < 4.0 && r.googleRaw.count >= 20) out.push('Google ' + n1(r.googleRaw.rating) + ' (' + r.googleRaw.count + ')');
+  if (r.netWarn === 'rendimento') out.push('rende pouco nos tanques da rede');
+  else if (r.netWarn === 'bomba') out.push('bomba mal avaliada na rede');
+  else if (r.netWarn === 'falhas') out.push('relatos de falha depois de abastecer');
+  if (r.stars != null && r.stars < 3.5) out.push(n1(r.stars) + '★ de quem abasteceu');
+  if (o.personal?.falhou) out.push('você relatou falha depois de abastecer lá');
+  else if (o.personal?.stars != null && o.personal.stars < 3.5) out.push('sua nota: ' + n1(o.personal.stars) + '★');
+  if (o.personal?.yieldR != null && o.personal.yieldR < 0.97 && o.yieldSrc === 'voce') out.push('seus tanques de lá renderam ' + Math.round((1 - o.personal.yieldR) * 100) + '% menos');
+  const age = ageDays(o.price.date, today);
+  if (age > 7) out.push('preço de ' + age + ' dias atrás');
+  return out;
 }
 
 export interface StationRow {
@@ -292,6 +353,7 @@ export function stationsFor(
   all: Station[], base: Base, car: CarModel, own: OwnPrice[], today: string,
   google?: Map<string, { rating: number; count: number }>,
   net?: NetMap,
+  mine?: Map<string, Personal>,
 ): StationRow[] {
   const rows: StationRow[] = [];
   for (const s of all) {
@@ -317,13 +379,21 @@ export function stationsFor(
     const rel = reliability(s, today, google?.get(s.c), live);
     const gas = priceOf(s, 'gasolina', own, live);
     const eth = priceOf(s, 'etanol', own, live);
-    const yr = yieldOf(live);
+    const personal = mine?.get(s.c) ?? null;
+    const netY = yieldOf(live);
+    const myY = personal?.yieldR != null ? Math.max(0.9, Math.min(1.1, personal.yieldR)) : null;
+    // rendimento: o da rede (muitas pessoas) vale antes dos seus tanques
+    const yr = netY ?? myY;
+    const yieldSrc = netY != null ? 'rede' : myY != null ? 'voce' : null;
+    const quality = qualityOf(rel, live, personal);
     const opts: Option[] = [];
     for (const [fuel, pp] of [['gasolina', gas], ['etanol', eth]] as const) {
       if (!pp || !car.fuels.includes(fuel)) continue;
       const kml = (fuel === 'gasolina' ? car.kmlG : car.kmlE) * (yr ?? 1);
       const cpk = pp.price / kml;
-      opts.push({ s, fuel, price: pp, extraKm, distKm, costPerKm: cpk, cost: cpk * (car.kmTank + extraKm), rel, stale: ageDays(pp.date, today) > MAX_PRICE_AGE, yieldR: yr });
+      const cost = cpk * (car.kmTank + extraKm);
+      const age = ageDays(pp.date, today);
+      opts.push({ s, fuel, price: pp, extraKm, distKm, costPerKm: cpk, cost, rel, stale: age > MAX_PRICE_AGE, yieldR: yr, yieldSrc, quality, value: valueOf(cost, quality, age), personal });
     }
     opts.sort((a, b) => a.cost - b.cost);
     rows.push({ s, distKm, extraKm, gas, eth, rel, opts, best: opts[0] ?? null, live });
@@ -448,7 +518,10 @@ export function usageVerdict(u: StationUse): { tone: 'ok' | 'bad' | 'neutral'; t
 }
 
 export interface Recommendation {
+  /** Sugerida: menor custo ajustado (preço, combustível, desvio e rendimento, pesados pela confiabilidade e pela idade do preço). */
   best: Option | null;
+  /** Menor custo puro entre as opções aceitáveis (pode ser a própria sugerida). */
+  cheapest: Option | null;
   /** Melhor opção do outro combustível (para mostrar quanto a escolha economiza). */
   bestOther: Option | null;
   /** Opção mais barata deixada de lado por confiabilidade baixa, para avisar. */
@@ -458,11 +531,12 @@ export interface Recommendation {
 
 export function recommend(rows: StationRow[]): Recommendation {
   const all = rows.flatMap((r) => r.opts).filter((o) => !o.stale);
-  const good = all.filter((o) => o.rel.level !== 'evitar').sort((a, b) => a.cost - b.cost);
+  const good = all.filter((o) => o.rel.level !== 'evitar').sort((a, b) => a.value - b.value || a.cost - b.cost);
   const best = good[0] ?? null;
+  const cheapest = good.slice().sort((a, b) => a.cost - b.cost || a.value - b.value)[0] ?? null;
   const bestOther = best ? good.find((o) => o.fuel !== best.fuel) ?? null : null;
   const unsafe = all.filter((o) => o.rel.level === 'evitar').sort((a, b) => a.cost - b.cost)[0] ?? null;
-  return { best, bestOther, cheaperUnsafe: unsafe && best && unsafe.cost < best.cost ? unsafe : null, considered: good.length };
+  return { best, cheapest, bestOther, cheaperUnsafe: unsafe && cheapest && unsafe.cost < cheapest.cost ? unsafe : null, considered: good.length };
 }
 
 /* ---------- casar postos do Google com os da ANP ---------- */
