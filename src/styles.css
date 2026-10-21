@@ -608,3 +608,9 @@ a.next-card { text-decoration: none; }
 .doc h2 { font-size: 17px; font-weight: 600; margin-top: 8px; }
 .doc p { font-size: 15px; line-height: 1.5; color: var(--ink-2); }
 .doc p b { color: var(--ink); }
+
+/* telas estreitas */
+.rec-actions .btn { white-space: nowrap; font-size: 14px; padding: 0 10px; gap: 6px; }
+.rec-actions .btn svg { width: 18px; height: 18px; flex: none; }
+.hrow .row .end .a { font-size: 14px; white-space: nowrap; }
+.hrow .row { gap: 10px; }
