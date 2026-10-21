@@ -12,7 +12,7 @@ export function resetLogin() {
 /** Desenha o formulário de entrada dentro de `box` e liga os botões. `onDone` roda ao entrar pelo código. */
 export function renderLogin(box: HTMLElement, opts: { cta?: string; onDone?: () => void; compact?: boolean } = {}) {
   box.innerHTML = otpSent
-    ? '<div class="login sent"><div class="t">Confira seu e-mail</div><div class="d">Enviamos um link de acesso para <b>' + esc(otpEmail) + '</b>. Abra o e-mail <b>neste aparelho</b> e toque no link: o app abre já conectado. Pode levar um minuto e às vezes cai no spam.</div>' +
+    ? '<div class="login sent"><div class="t">Confira seu e-mail</div><div class="d">Enviamos um link de acesso para <b>' + esc(otpEmail) + '</b>. Abra o e-mail <b>neste aparelho</b> e toque no link: o app abre já conectado. No primeiro acesso ele vem como <b>confirmação de cadastro</b>: é o mesmo link. Pode levar um minuto e às vezes cai no spam.</div>' +
       '<label class="field">Se o e-mail trouxe um código, digite aqui<input class="inp sm" data-l="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>' +
       '<div class="err" data-l="err" hidden></div>' +
       '<div class="btn-row"><button type="button" class="btn" data-l="back">Trocar e-mail</button><button type="button" class="btn primary" data-l="go">Entrar com código</button></div></div>'
