@@ -56,11 +56,21 @@ const pub = await fetch(URL_ + '/storage/v1/object/public/os/qualquer.pdf');
 pub.status >= 400 ? ok(`arquivos de OS: sem link público (${pub.status})`) : bad('arquivos de OS acessíveis por link público');
 
 // 4) Funções do servidor exigem login de verdade
-for (const fn of ['postos-google', 'excluir-conta']) {
+for (const fn of ['postos-google', 'excluir-conta', 'mcp']) {
   for (const [who, auth] of [['sem login', undefined], ['com token forjado', 'Bearer ' + FAKE_JWT]]) {
     const r = await call(`/functions/v1/${fn}`, { method: 'POST', body: { mode: 'address', query: 'teste', lat: -27.6, lon: -48.5, confirmar: 'EXCLUIR' }, auth });
     r.status === 401 ? ok(`${fn}: ${who} recusado (401)`) : bad(`${fn}: ${who} respondeu ${r.status}`);
   }
+}
+
+// conector do Claude: sem login aponta para o servidor de login (OAuth) e não lista nada
+{
+  const r = await fetch(URL_ + '/functions/v1/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'listar_carros', arguments: {} } }) });
+  const www = r.headers.get('www-authenticate') ?? '';
+  r.status === 401 && /resource_metadata=/.test(www) ? ok('mcp: sem login pede OAuth (401 + resource_metadata)') : bad(`mcp: sem login respondeu ${r.status} ${www}`);
+  const meta = await fetch(URL_ + '/functions/v1/mcp/.well-known/oauth-protected-resource');
+  const m = meta.ok ? await meta.json() : null;
+  m?.authorization_servers?.[0] === URL_ + '/auth/v1' ? ok('mcp: metadados apontam para o login do Supabase') : bad('mcp: metadados do recurso protegido errados');
 }
 
 // 5) Área administrativa do login

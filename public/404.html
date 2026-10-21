@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Enche Aí</title>
+<script>
+  // Endereço que não existe no site: um pedido de conexão (OAuth) vai para a autorização; o resto, para o app.
+  var q = location.search;
+  location.replace('/encheai/' + (/[?&]authorization_id=/.test(q) ? q + '#/autorizar' : ''));
+</script></head>
+<body style="font-family:system-ui;padding:24px">Abrindo o Enche Aí… <a href="/encheai/">continuar</a></body></html>

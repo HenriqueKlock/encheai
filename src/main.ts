@@ -18,6 +18,7 @@ import { initCarros } from './screens/carros';
 import { initCarro } from './screens/carro';
 import { initLocais } from './screens/locais';
 import { initImportar } from './screens/importar';
+import { captureAuthorization, initAutorizar, pendingAuthorization } from './screens/autorizar';
 import { initInicio } from './screens/inicio';
 import { initPerfil } from './screens/perfil';
 import { applyConsentChoice, hideWelcome, shouldWelcome, showWelcome } from './screens/boasvindas';
@@ -51,6 +52,8 @@ const fill = initAbastecer(postos, () => carros.openVehicle(null));
 initCarro(fill);
 initLocais();
 const importar = initImportar();
+initAutorizar();
+const authorizing = captureAuthorization();
 const perfil = initPerfil({ status: () => syncStatus, statusText: () => syncText()[1] });
 initInicio({ signedIn: () => signedIn, legacy: () => (legacyCount ? { fuel_logs: legacyCount } : null), renderRec: postos.renderHome });
 
@@ -106,6 +109,8 @@ async function boot() {
   const leg = await legacyData();
   legacyCount = leg && !(await db.fuel_logs.count()) ? leg.counts.fuel_logs : null;
   startRouter();
+  // pedido de conexão do Claude: vai direto para a autorização, sem boas-vindas
+  if (authorizing || pendingAuthorization()) return;
   if (await shouldWelcome(signedIn)) showWelcome({ legacyCount, onClose: () => {} });
 }
 
@@ -142,7 +147,7 @@ startAutoSync();
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN') {
         toast('Conta conectada. Sincronizando…');
-        history.replaceState(null, '', location.pathname + '#/inicio');
+        history.replaceState(null, '', location.pathname + (pendingAuthorization() ? '#/autorizar' : '#/inicio'));
         data.subscription.unsubscribe();
       }
     });

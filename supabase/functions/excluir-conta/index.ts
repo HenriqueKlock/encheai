@@ -31,6 +31,17 @@ async function currentUser(req: Request): Promise<string | null> {
   }
 }
 
+/** Token emitido para um app conectado (OAuth do Supabase) traz o claim client_id. */
+function fromConnectedApp(req: Request): boolean {
+  try {
+    const part = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/, '').split('.')[1] ?? '';
+    const claims = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=')));
+    return !!claims?.client_id;
+  } catch {
+    return true; // sem conseguir ler, não arrisca
+  }
+}
+
 Deno.serve(async (req) => {
   const headers = cors(req.headers.get('origin'));
   if (req.method === 'OPTIONS') return new Response('ok', { headers });
@@ -40,6 +51,8 @@ Deno.serve(async (req) => {
 
   const uid = await currentUser(req);
   if (!uid) return json(401, { error: 'Entre na sua conta para excluir.' });
+  // Só o próprio app exclui a conta: token de app conectado (OAuth, com client_id) não pode
+  if (fromConnectedApp(req)) return json(403, { error: 'Apps conectados não podem excluir a conta.' });
 
   let b: any = {};
   try {

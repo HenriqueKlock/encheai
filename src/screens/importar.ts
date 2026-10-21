@@ -14,7 +14,7 @@ import { ICON } from '../icons';
 
 export const MCP_URL = SUPABASE_URL + '/functions/v1/mcp';
 /** Liga a opção "Conectar o Claude" quando o conector estiver no ar. */
-const MCP_READY = false;
+const MCP_READY = true;
 
 type Step =
   | { s: 'menu' }

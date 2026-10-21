@@ -34,6 +34,8 @@ jobs:
           ls -la public/dados
       - run: npm run check
       - run: npm test
+      - name: Conector MCP (servidor com o Supabase simulado)
+        run: npx -y deno@2 run --allow-env --allow-net --allow-read tests/mcp-servidor.deno.ts
       - run: npm run build
       - name: Segurança (caixa preta, só com o que é público)
         run: node tests/blackbox.mjs dist

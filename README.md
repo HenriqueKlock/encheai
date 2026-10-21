@@ -16,11 +16,13 @@ o rendimento medido do combustível e avaliações de um toque, além da fiscali
 - **Supabase (projeto `encheai`, São Paulo):**
   - Tabelas pessoais com RLS por usuário.
   - `ratings`: avaliações, uma por abastecimento, só do próprio e até 7 dias depois.
-  - `station_live`: números da rede por posto. São só agregados, recalculados a cada 15 min por `rede_refresh()` (pg_cron) a partir de quem aceitou contribuir.
+  - `station_live`: números da rede por posto. São só agregados, recalculados a cada 5 min por `rede_refresh()` (pg_cron) a partir de quem aceitou contribuir.
   - Limites de publicação: rendimento com 5 pessoas e 15 tanques; cada item da avaliação com 3 respostas; preço dos últimos 7 dias.
   - Funções:
     - `postos-google`: notas, fotos e sugestões de endereço, com cota diária por conta.
-    - `excluir-conta`: apaga a conta e tudo dela.
+    - `excluir-conta`: apaga a conta e tudo dela (só pelo próprio app, nunca por app conectado).
+    - `mcp`: conector para o Claude (MCP por HTTP). Login pelo OAuth 2.1 do Supabase; ferramentas para listar carros, ver histórico, conferir e importar. Apps conectados (token com `client_id`) só leem carros e histórico e acrescentam registros; políticas restritivas no banco garantem isso.
+- **Trazer histórico (`#/importar`):** planilha .csv/.xlsx sem IA (`src/planilha.ts`), resposta da IA da pessoa no formato `encheai-importacao-1` (`src/importacao.ts`, o mesmo arquivo roda na função `mcp`) e backup. Tudo passa por uma prévia que tira duplicados.
 - **Dados da ANP:** `pipeline/postos.py` roda no GitHub Actions (`dados.yml`, terça e sábado). Gera `postos-SC.json` na branch `dados`, que o deploy publica em `/dados/`.
 
 ## Privacidade
@@ -43,6 +45,9 @@ Testes de banco (rodar no SQL do Supabase; terminam com um erro de propósito qu
 
 - `supabase/tests/rls_isolamento.sql`: um usuário não lê nem altera dados de outro.
 - `supabase/tests/rede_calculo.sql`: preço, rendimento e avaliações da rede.
+- `supabase/tests/apps_conectados.sql`: o que um app conectado (Claude) pode e não pode fazer.
+
+Conector MCP com o Supabase simulado: `npx -y deno@2 run --allow-env --allow-net --allow-read tests/mcp-servidor.deno.ts`.
 
 ## Configuração que só o dono do projeto faz
 
@@ -50,6 +55,7 @@ Testes de banco (rodar no SQL do Supabase; terminam com um erro de propósito qu
 2. Supabase › Edge Functions › Secrets: `GOOGLE_MAPS_API_KEY`. A chave nunca passa pelo chat nem pelo repositório.
 3. GitHub › Settings › Pages: Source = GitHub Actions.
 4. Opcional: SMTP próprio (Resend ou Brevo) em Authentication › Emails, para passar do limite de e-mails de login.
+5. Conector do Claude: Supabase › Authentication › OAuth Server: ligar o servidor OAuth 2.1, Authorization Path `/autorizar` e permitir registro dinâmico de clientes. A tela de autorização é `#/autorizar` (com `autorizar/index.html` e `404.html` encaminhando o `authorization_id`).
 
 ## Próximas etapas
 

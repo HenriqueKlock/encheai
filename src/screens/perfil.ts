@@ -3,7 +3,7 @@
 import { db, setMeta } from '../db';
 import { exportBackup, importBackup, legacyData, type LegacyData } from '../backup';
 import { TERMS_VERSION } from '../config';
-import { currentSession, deleteAccount, setContribute, setPlace, signOut, sync, type PlaceKind, type SyncStatus } from '../sync';
+import { currentSession, deleteAccount, setContribute, setPlace, signOut, supabase, sync, type PlaceKind, type SyncStatus } from '../sync';
 import { S, activeVehicles, current, subscribe } from '../store';
 import { $, closeSheets, esc, openSheet, pl, todayISO, toast } from '../ui';
 import { currentRoute, onShow } from '../router';
@@ -17,6 +17,19 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
   let email: string | null = null;
   let legacy: LegacyData | null = null;
   let legacyChecked = false;
+  // apps conectados pelo OAuth (o Claude, pelo conector)
+  let grants: { id: string; name: string; at: string }[] = [];
+  let grantsFor: string | null = null;
+  async function loadGrants() {
+    grantsFor = email;
+    try {
+      const { data, error } = await supabase.auth.oauth.listGrants();
+      grants = error || !data ? [] : data.map((g) => ({ id: g.client.id, name: g.client.name || 'App', at: g.granted_at }));
+    } catch {
+      grants = [];
+    }
+    if (grants.length) render();
+  }
 
   async function refreshSession() {
     email = (await currentSession())?.user.email ?? null;
@@ -63,7 +76,13 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
       '<a class="row nav" href="#/indicadores"><span class="ic blue">' + ICON.chart + '</span><span class="mid"><span class="a">Indicadores</span><span class="b">O que aparece no início</span></span><span class="chev">' + ICON.chev + '</span></a>' +
       '</div>';
 
+    if (email && grantsFor !== email) loadGrants();
+    const apps = email && grants.length
+      ? '<div class="sec-head"><span>Apps conectados</span></div><div class="list-card">' + grants.map((g) =>
+          '<div class="row simple conn-row"><span class="mid"><span class="a">' + esc(g.name) + '</span><span class="b">Conectado em ' + esc(g.at.slice(8, 10) + '/' + g.at.slice(5, 7) + '/' + g.at.slice(0, 4)) + ' · vê e registra carros e histórico</span></span><button type="button" class="btn sm" data-revoke="' + esc(g.id) + '">Desconectar</button></div>').join('') + '</div>'
+      : '';
     const data =
+      apps +
       '<div class="list-card">' +
       (legacy ? '<button type="button" class="row simple" data-p="legacy"><span class="mid"><span class="a">Trazer meus dados do app anterior</span><span class="b">' + pl(legacy.counts.vehicles, 'carro', 'carros') + ', ' + pl(legacy.counts.fuel_logs, 'abastecimento', 'abastecimentos') + ', ' + pl(legacy.counts.services, 'manutenção', 'manutenções') + ' neste celular</span></span><span></span><span class="chev">' + ICON.chev + '</span></button>' : '') +
       '<button type="button" class="row simple" data-p="export"><span class="mid"><span class="a">Baixar meus dados</span><span class="b">Arquivo JSON com carros e registros</span></span><span></span><span class="chev">' + ICON.chev + '</span></button>' +
@@ -94,6 +113,14 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     toast(el.checked ? 'Obrigado! Seus abastecimentos com posto entram nas médias da rede.' : 'Contribuição desligada. Em até 15 minutos seus dados deixam de contar.');
   });
   $('perfil-body').addEventListener('click', async (e) => {
+    const rv = (e.target as HTMLElement).closest<HTMLElement>('[data-revoke]');
+    if (rv) {
+      const { error } = await supabase.auth.oauth.revokeGrant({ clientId: rv.dataset.revoke! });
+      if (error) return toast('Não deu para desconectar agora. Tente de novo.');
+      grants = grants.filter((g) => g.id !== rv.dataset.revoke);
+      toast('Desconectado. O app perde o acesso à sua conta.');
+      return render();
+    }
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-p]');
     if (!b) return;
     const p = b.dataset.p;
