@@ -10,6 +10,7 @@ import { currentRoute, onShow } from '../router';
 import { renderLogin } from './conta';
 import { ICON } from '../icons';
 import { canInstall, install, isStandalone, onInstallChange } from '../instalar';
+import { disablePush, enablePush, pushState, type PushState } from '../lembretes';
 
 declare const __BUILD__: string;
 
@@ -20,6 +21,11 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
   // apps conectados pelo OAuth (o Claude, pelo conector)
   let grants: { id: string; name: string; at: string }[] = [];
   let grantsFor: string | null = null;
+  let push: PushState | null = null;
+  async function loadPush() {
+    push = await pushState();
+    render();
+  }
   async function loadGrants() {
     grantsFor = email;
     try {
@@ -39,6 +45,19 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     legacyChecked = true;
     legacy = await legacyData();
     render();
+  }
+
+  function pushCard() {
+    if (push === null) { loadPush(); return ''; }
+    const hint = !S.prefs.contribute
+      ? 'Ligue "Contribuir com a rede" para receber.'
+      : push === 'install' ? 'No iPhone, instale o app na tela inicial primeiro (Compartilhar › Adicionar à Tela de Início).'
+      : push === 'unsupported' ? 'Este navegador não recebe notificações.'
+      : push === 'blocked' ? 'As notificações estão bloqueadas para o app. Libere nas configurações do navegador.'
+      : 'Uma semana depois de abastecer, uma notificação pergunta como o carro andou com aquele combustível.';
+    const can = S.prefs.contribute && (push === 'on' || push === 'off');
+    return '<div class="card"><div class="switch-row"><div class="t"><span>Lembrete do combustível</span><span>' + esc(hint) + '</span></div>' +
+      '<input type="checkbox" class="switch" role="switch" id="p-push" aria-label="Lembrete do combustível"' + (push === 'on' ? ' checked' : '') + (can ? '' : ' disabled') + '></div></div>';
   }
 
   async function render() {
@@ -62,7 +81,8 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
         '<div class="card"><div class="switch-row"><div class="t"><span>Contribuir com a rede</span><span>Só médias por posto, sem o seu nome</span></div><input type="checkbox" class="switch" role="switch" id="p-contribute" aria-label="Contribuir com a rede"' + (S.prefs.contribute ? ' checked' : '') + '></div>' +
         (S.prefs.contribute
           ? '<div class="contrib"><div><b>' + linked.length + '</b><span>abastecimentos com posto (6 meses)</span></div><div><b>' + rated + '</b><span>' + (rated === 1 ? 'avaliação' : 'avaliações') + '</span></div><div><b>' + stations + '</b><span>' + (stations === 1 ? 'posto que você ajuda a medir' : 'postos que você ajuda a medir') + '</span></div></div>'
-          : '<span class="hint">Desligado: você continua vendo a rede, mas seus abastecimentos não entram nas médias.</span>') + '</div>'
+          : '<span class="hint">Desligado: você continua vendo a rede, mas seus abastecimentos não entram nas médias.</span>') + '</div>' +
+        pushCard()
       : '<div class="card" id="p-login"></div>';
 
     const inst = canInstall() && !isStandalone()
@@ -109,6 +129,18 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
 
   $('perfil-body').addEventListener('change', async (e) => {
     const el = e.target as HTMLInputElement;
+    if (el.id === 'p-push') {
+      el.disabled = true;
+      if (el.checked) {
+        const err = await enablePush();
+        if (err) toast(err);
+        else toast('Pronto: uma semana depois de cada abastecimento chega um lembrete.');
+      } else {
+        await disablePush();
+        toast('Lembretes desligados neste aparelho.');
+      }
+      return loadPush();
+    }
     if (el.id !== 'p-contribute') return;
     await setContribute(el.checked, TERMS_VERSION);
     toast(el.checked ? 'Obrigado! Seus abastecimentos com posto entram nas médias da rede.' : 'Contribuição desligada. Em até 15 minutos seus dados deixam de contar.');
@@ -126,7 +158,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     if (!b) return;
     const p = b.dataset.p;
     if (p === 'sync') { await sync(); return render(); }
-    if (p === 'out') { await signOut(); toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
+    if (p === 'out') { await disablePush(); push = null; await signOut(); toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
     if (p === 'export') return download();
     if (p === 'install') { if (await install()) toast('Instalado! Procure o Enche Aí na tela inicial.'); return render(); }
     if (p === 'legacy') return importLegacy();

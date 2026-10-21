@@ -12,6 +12,7 @@
   --ok-bg: #DCFAE6; --ok-ink: #067647; --ok-dot: #16A34A;
   --warn-bg: #FEF3C7; --warn-ink: #78350F; --warn-icon: #92400E;
   --bad-bg: #FEE4E2; --bad-ink: #B42318;
+  --star: #E59700;
   --calc-bg: #F5F7FB; --calc-line: #93A3BD; --calc-ink: #1F2A44;
   --scrim: rgba(6, 10, 14, .45);
   --shadow: 0 6px 20px rgba(0, 0, 0, .18);
@@ -31,6 +32,7 @@
     --ok-bg: #12301F; --ok-ink: #7EE2A8; --ok-dot: #4ADE80;
     --warn-bg: #3A2A12; --warn-ink: #FCD9A0; --warn-icon: #FCD34D;
     --bad-bg: #3B1512; --bad-ink: #FCA5A0;
+    --star: #FBBF24;
     --calc-bg: #182033; --calc-line: #4B5E85; --calc-ink: #C9D5EE;
     --shadow: 0 6px 20px rgba(0, 0, 0, .5);
     color-scheme: dark;
@@ -567,6 +569,26 @@ a.next-card { text-decoration: none; }
 .rate-opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .rate-opts button { height: 46px; border-radius: 14px; border: 1px solid var(--field); background: var(--surface); font-size: 15px; font-weight: 500; color: var(--ink); }
 .rate-opts button[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 600; }
+.stars { display: flex; gap: 4px; }
+.stars button { width: 48px; height: 48px; display: grid; place-items: center; border: 0; background: none; color: var(--field); padding: 0; border-radius: 12px; }
+.stars button.on { color: var(--star); }
+.stars button:disabled { opacity: .7; }
+.after-q .hint { margin-top: -4px; }
+.after-measured { color: var(--ink-2); }
+.after-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.after-opts button { min-height: 50px; padding: 6px 10px; border-radius: 14px; border: 1px solid var(--field); background: var(--surface); font-size: 14px; font-weight: 500; color: var(--ink); line-height: 1.25; text-align: center; }
+.after-opts button[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 600; }
+.after-opts button:disabled:not([aria-checked="true"]) { opacity: .55; }
+.depois-card { display: flex; flex-direction: column; gap: 8px; }
+.depois-card .l { font-size: 12px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); }
+.depois-card .t { font-size: 17px; font-weight: 600; letter-spacing: -.2px; }
+.depois-card .link-btn { align-self: flex-start; padding-left: 0; }
+.stars-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stars-avg { font-size: 26px; font-weight: 600; letter-spacing: -.5px; }
+.stars-show { display: inline-flex; gap: 1px; font-size: 18px; font-style: normal; }
+.stars-show i { font-style: normal; color: var(--field); }
+.stars-show i.on { color: var(--star); }
+.stars-show i.half { background: linear-gradient(90deg, var(--star) 50%, var(--field) 50%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
 /* meu carro */
 .seg3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; background: var(--sunken); }

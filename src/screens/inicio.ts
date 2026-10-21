@@ -11,8 +11,9 @@ import type { Vehicle } from '../db';
 import { $, cap, esc, fmt, km, monthYear, pl, todayISO } from '../ui';
 import { currentRoute, onShow } from '../router';
 import { ICON } from '../icons';
+import { AFTER_OPTIONS, pendingAfter, type AfterEffect } from '../depois';
 
-export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel_logs: number } | null; renderRec: () => void }) {
+export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel_logs: number } | null; renderRec: () => void; answerAfter: (fillId: string, v: AfterEffect) => Promise<void> }) {
   function render() {
     if (currentRoute().view !== 'inicio') return;
     const v = current();
@@ -29,6 +30,7 @@ export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel
     ['home-consumo', 'home-inds-head', 'home-inds', 'home-next'].forEach((id) => ($(id).hidden = empty));
     opts.renderRec();
     renderRede();
+    renderDepois();
     if (!v) return;
     renderConsumo();
     renderInds();
@@ -88,6 +90,36 @@ export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel
       '<div class="row-meta"><span>' + left + '</span><span>' + esc(right) + '</span></div></a>'
     );
   }
+
+  /* ---------- uma semana depois: como o carro andou com aquele combustível? ---------- */
+  const DISMISS = 'depois_dispensado';
+  const dismissed = (): string[] => { try { return JSON.parse(localStorage.getItem(DISMISS) ?? '[]'); } catch { return []; } };
+  function renderDepois() {
+    const el = $('home-depois');
+    const f = opts.signedIn() && S.prefs.contribute ? pendingAfter(S.logs, S.ratings, todayISO(), dismissed()) : null;
+    if (!f) { el.innerHTML = ''; return; }
+    const name = (f.station ?? 'posto').split(' · ')[0];
+    const ago = Math.round((Date.parse(todayISO()) - Date.parse(f.date)) / 864e5);
+    el.innerHTML =
+      '<div class="card depois-card"><span class="l">Uma semana depois</span><span class="t">Como o carro andou com o combustível do ' + esc(name) + '?</span>' +
+      '<span class="hint">Abastecido em ' + esc(f.date.slice(8, 10) + '/' + f.date.slice(5, 7)) + ' (' + ago + ' dias atrás). Ajuda a saber a qualidade do combustível de cada posto.</span>' +
+      '<div class="after-opts">' + AFTER_OPTIONS.map(([v, t]) => '<button type="button" data-home-after="' + v + '" data-fill="' + esc(f.id) + '">' + t + '</button>').join('') + '</div>' +
+      '<button type="button" class="link-btn muted" data-home-dismiss="' + esc(f.id) + '">Agora não</button></div>';
+  }
+  $('home-depois').addEventListener('click', async (e) => {
+    const el = e.target as HTMLElement;
+    const a = el.closest<HTMLElement>('[data-home-after]');
+    if (a) {
+      a.closest('.depois-card')?.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+      await opts.answerAfter(a.dataset.fill!, a.dataset.homeAfter as AfterEffect);
+      return renderDepois();
+    }
+    const d = el.closest<HTMLElement>('[data-home-dismiss]');
+    if (d) {
+      try { localStorage.setItem(DISMISS, JSON.stringify([...dismissed(), d.dataset.homeDismiss!].slice(-50))); } catch { /* sem acesso */ }
+      renderDepois();
+    }
+  });
 
   function renderRede() {
     const el = $('home-rede');

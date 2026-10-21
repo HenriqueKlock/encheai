@@ -291,7 +291,17 @@ async function syncSettings() {
 /* ---------- avaliações em um toque ---------- */
 
 export type Vote = 1 | -1 | null;
-export interface RatingRow { fuel_log_id: string; station_id: string; bomba: Vote; atendimento: Vote; banheiro: Vote; dirty: boolean; /** apagada aqui; some do servidor na próxima sincronização */ deleted?: boolean }
+export type AfterEffect = 'normal' | 'melhor' | 'falhou' | 'rendeu_menos';
+export interface RatingRow {
+  fuel_log_id: string; station_id: string; bomba: Vote; atendimento: Vote; banheiro: Vote;
+  /** Nota geral, 1 a 5 (opcional). */
+  stars?: number | null;
+  /** Como o carro andou com o combustível desse abastecimento (perguntado depois). */
+  after_effect?: AfterEffect | null;
+  after_at?: string | null;
+  dirty: boolean;
+  /** apagada aqui; some do servidor na próxima sincronização */ deleted?: boolean;
+}
 const RATINGS_KEY = 'ratings';
 
 export async function getRatings(): Promise<Record<string, RatingRow>> {
@@ -340,7 +350,7 @@ async function syncRatings() {
     }
     all[r.fuel_log_id] = { ...r, dirty: false };
   }
-  const { data: got, error } = await supabase.from('ratings').select('fuel_log_id, station_id, bomba, atendimento, banheiro');
+  const { data: got, error } = await supabase.from('ratings').select('fuel_log_id, station_id, bomba, atendimento, banheiro, stars, after_effect, after_at');
   if (error) throw error;
   // avaliação de abastecimento excluído ou que mudou de posto: apaga do servidor também
   const data: typeof got = [];

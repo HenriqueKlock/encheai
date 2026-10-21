@@ -35,6 +35,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: base + 'index.html',
         cleanupOutdatedCaches: true,
+        // notificações do lembrete "como o carro andou?" (public/push-sw.js)
+        importScripts: ['push-sw.js'],
         // Lista de postos (atualizada toda semana): abre na hora com a cópia do celular e atualiza por trás
         runtimeCaching: [
           {

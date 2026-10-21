@@ -57,7 +57,7 @@ initAutorizar();
 initRelato();
 const authorizing = captureAuthorization();
 const perfil = initPerfil({ status: () => syncStatus, statusText: () => syncText()[1] });
-initInicio({ signedIn: () => signedIn, legacy: () => (legacyCount ? { fuel_logs: legacyCount } : null), renderRec: postos.renderHome });
+initInicio({ signedIn: () => signedIn, legacy: () => (legacyCount ? { fuel_logs: legacyCount } : null), renderRec: postos.renderHome, answerAfter: (id, v) => fill.answerAfter(id, v) });
 
 $('add-btn').addEventListener('click', () => fill.open(null));
 

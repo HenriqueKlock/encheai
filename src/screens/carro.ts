@@ -11,6 +11,7 @@ import { $, brl, cap, closeSheets, dm, esc, fmt, km, openSheet, pl, todayISO, to
 import { currentRoute, onShow, type Route } from '../router';
 import { parseIntLoose } from '../calc';
 import { ICON } from '../icons';
+import { AFTER_SHORT, canAskAfter, usedEnough, type AfterEffect } from '../depois';
 
 const SVC_LABEL = { revisao: 'Revisão', corretiva: 'Conserto', pneus: 'Pneus', outros: 'Manutenção' } as const;
 
@@ -93,6 +94,8 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
         const st = f.station ? f.station.split(' · ')[0] : null;
         const rt = S.ratings[f.id];
         const canRate = !!f.station_id && !rt && S.prefs.contribute && Math.round((Date.parse(today) - Date.parse(f.date)) / 864e5) <= 30;
+        // avaliado, mas ainda sem dizer como o carro andou (e o carro já rodou com esse combustível)
+        const askAfter = !!rt && S.prefs.contribute && canAskAfter(f, today, rt) && usedEnough(f, fs, today);
         const sub = [km(f.odometer_km) + ' km', brl(f.price_per_l || f.total_brl / f.liters) + '/l'].join(' · ');
         entries.push({
           date: f.date, odo: f.odometer_km, total: f.total_brl, kind: 'f',
@@ -100,7 +103,8 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
             '<div class="hrow"><button type="button" class="row" data-fill="' + esc(f.id) + '"><span class="day"><b>' + f.date.slice(8, 10) + '</b><span>' + monthName(monthKey(f.date)).slice(0, 3) + '</span></span>' +
             '<span class="mid"><span class="a' + (st ? '' : ' muted') + '">' + (st ? esc(st) : 'Sem posto') + '</span><span class="b"><i class="dot ' + (f.fuel === 'etanol' ? 'eth' : 'gas') + '"></i>' + FUEL_LABEL[f.fuel] + ' ' + fmt(f.liters, 1) + ' l · ' + brl(f.total_brl) + '</span><span class="b">' + esc(sub) + '</span></span>' +
             '<span class="end"><span class="a' + (i && i.kml ? '' : ' muted') + '">' + metric + '</span></span></button>' +
-            (rt ? '<button type="button" class="rate-chip done" data-rate-fill="' + esc(f.id) + '">' + ICON.check + '<span>' + esc(ratingSummary(rt)) + '</span></button>'
+            (askAfter ? '<button type="button" class="rate-chip" data-rate-fill="' + esc(f.id) + '">Como o carro andou?</button>'
+              : rt ? '<button type="button" class="rate-chip done" data-rate-fill="' + esc(f.id) + '">' + ICON.check + '<span>' + esc(ratingSummary(rt)) + '</span></button>'
               : canRate ? '<button type="button" class="rate-chip" data-rate-fill="' + esc(f.id) + '">Avaliar o posto</button>' : '') + '</div>',
         });
       }
@@ -272,8 +276,10 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
 }
 
 /** "bomba ok · banheiro ruim": resumo da avaliação no histórico. */
-function ratingSummary(r: { bomba: 1 | -1 | null; atendimento: 1 | -1 | null; banheiro: 1 | -1 | null }) {
+function ratingSummary(r: { bomba: 1 | -1 | null; atendimento: 1 | -1 | null; banheiro: 1 | -1 | null; stars?: number | null; after_effect?: AfterEffect | null }) {
   const parts = [
+    r.stars ? r.stars + '★' : '',
+    r.after_effect ? AFTER_SHORT[r.after_effect] : '',
     r.bomba != null ? 'bomba ' + (r.bomba > 0 ? 'ok' : 'errada') : '',
     r.atendimento != null ? 'atendimento ' + (r.atendimento > 0 ? 'bom' : 'ruim') : '',
     r.banheiro != null ? 'banheiro ' + (r.banheiro > 0 ? 'bom' : 'ruim') : '',

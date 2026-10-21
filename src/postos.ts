@@ -132,7 +132,13 @@ export interface StationLive {
   price: Partial<Record<'gasolina' | 'etanol' | 'diesel', NetPrice>>;
   /** Rendimento medido: r = km/l dos tanques daqui ÷ o normal de cada pessoa. Só vem com pub = true quando há volume. */
   yield: { r: number | null; people: number; tanks: number; pub: boolean } | null;
-  ratings: { n: number; bomba: RatingTally | null; atendimento: RatingTally | null; banheiro: RatingTally | null } | null;
+  ratings: {
+    n: number; bomba: RatingTally | null; atendimento: RatingTally | null; banheiro: RatingTally | null;
+    /** [soma das notas, quantas] — só com 5 ou mais */
+    estrelas?: [number, number] | null;
+    /** Como o carro andou depois — só com 3 ou mais respostas */
+    depois?: { n: number; normal: number; melhor: number; falhou: number; rendeu_menos: number } | null;
+  } | null;
 }
 export type NetMap = Map<string, StationLive>;
 
@@ -147,6 +153,12 @@ export function goodShare(live: StationLive | null | undefined, k: 'bomba' | 'at
   return t && t[1] >= 3 ? t[0] / t[1] : null;
 }
 
+/** Média das estrelas da rede (1 a 5), quando publicada. */
+export function starsOf(live?: StationLive | null): { avg: number; n: number } | null {
+  const e = live?.ratings?.estrelas;
+  return e && e[1] >= 5 ? { avg: e[0] / e[1], n: e[1] } : null;
+}
+
 export interface Reliability {
   score: number; // 0–5
   anp: number; // 0–5
@@ -158,7 +170,9 @@ export interface Reliability {
   interdictions: number;
   visits: number;
   /** Rede: tanques daqui rendem pouco (publicado) ou muita gente diz que a bomba não marcou certo. */
-  netWarn: 'rendimento' | 'bomba' | null;
+  netWarn: 'rendimento' | 'bomba' | 'falhas' | null;
+  /** Média das estrelas de quem abasteceu (com 5 ou mais notas). */
+  stars: number | null;
 }
 
 /**
@@ -186,17 +200,21 @@ export function reliability(s: Station, today: string, g?: { rating: number; cou
     const m = 30;
     google = (g.rating * g.count + 4.0 * m) / (g.count + m);
   }
+  // Estrelas de quem abasteceu entram com peso pequeno: a fiscalização e o rendimento medido pesam mais
+  const st = starsOf(live);
   let score = google == null ? anp : 0.65 * anp + 0.35 * google;
+  if (st) score = google == null ? 0.8 * anp + 0.2 * st.avg : 0.6 * anp + 0.25 * google + 0.15 * st.avg;
   if (recentSerious) score = Math.min(score, 2.5);
   // Rede: rendimento medido baixo ou bomba mal avaliada limitam a nota a "atenção"
   let netWarn: Reliability['netWarn'] = null;
   const y = live?.yield;
   if (y?.pub && y.r != null && y.r < 0.95) netWarn = 'rendimento';
   else if ((live?.ratings?.bomba?.[1] ?? 0) >= 5 && (goodShare(live, 'bomba') ?? 1) < 0.6) netWarn = 'bomba';
+  else if ((live?.ratings?.depois?.n ?? 0) >= 5 && live!.ratings!.depois!.falhou / live!.ratings!.depois!.n >= 0.25) netWarn = 'falhas';
   if (netWarn) score = Math.min(score, 3.4);
   score = Math.round(score * 10) / 10;
   const level = score >= 3.8 ? 'ok' : score >= 3 ? 'atencao' : 'evitar';
-  return { score, anp: Math.round(anp * 10) / 10, google: google == null ? null : Math.round(google * 10) / 10, level, recentSerious, infractions: inf, interdictions: intd, visits: s.f?.n ?? 0, netWarn };
+  return { score, anp: Math.round(anp * 10) / 10, google: google == null ? null : Math.round(google * 10) / 10, level, recentSerious, infractions: inf, interdictions: intd, visits: s.f?.n ?? 0, netWarn, stars: st ? Math.round(st.avg * 10) / 10 : null };
 }
 
 /* ---------- preços ---------- */

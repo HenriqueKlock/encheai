@@ -4,9 +4,10 @@ import { db, softDelete, stamp, uuid, type FuelLog, type FuelType } from '../db'
 import { aggregate, intervals, parseIntLoose, parseNum } from '../calc';
 import { gps } from '../lugares';
 import { ageDays, type Fuel, type PricePoint, type Station } from '../postos';
-import { currentSession, deleteRating, saveRating, type Vote } from '../sync';
+import { currentSession, deleteRating, saveRating, type RatingRow, type Vote } from '../sync';
+import { AFTER_OPTIONS, MAX_DAYS, canAskAfter, previousFill, tankVsNormal, usedEnough, type AfterEffect } from '../depois';
 import { invalidateNetwork } from '../rede';
-import { S, carInfo, carLogs, current } from '../store';
+import { S, carInfo, carIntervals, carLogs, current } from '../store';
 import { $, ago, brl, closeSheets, dm, esc, fmt, km, openSheet, pl, todayISO, toast } from '../ui';
 import { go } from '../router';
 import { stationLabel, type PostosApi } from './postos';
@@ -375,90 +376,185 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     if (editing && editing.station_id !== row.station_id) await deleteRating(editing.id);
     await db.fuel_logs.put(row);
     if (st) invalidateNetwork(st.c);
-    const askRating = !wasEdit && !!st && S.prefs.contribute && !!(await currentSession()) && ageDays(date, todayISO()) <= 30;
-    if (askRating) {
-      openRating(row.id, true);
-      return;
-    }
+    // avaliar o posto de agora e perguntar como o carro andou com o combustível do abastecimento anterior
+    if (!wasEdit && (await openAfterSave(row))) return;
     closeSheets(() => !wasEdit && go('inicio'));
     toast(wasEdit ? 'Alterações salvas' : 'Abastecimento salvo');
   });
 
-  /* ---------- avaliação em um toque ---------- */
-  let rating: { fill: FuelLog; bomba: Vote; atendimento: Vote; banheiro: Vote; justSaved: boolean; existed: boolean; locked: boolean } | null = null;
-  /** Avaliação do posto de um abastecimento: logo depois de salvar, ou depois, pelo histórico (ver, mudar ou apagar). */
-  function openRating(fillId: string, justSaved = false) {
-    // a linha acabou de ser gravada: o estado em memória pode ainda não ter chegado
-    db.fuel_logs.get(fillId).then((f) => {
+  /* ---------- avaliação: estrelas, bomba/atendimento/banheiro e "como o carro andou depois" ---------- */
+  type Sheet = {
+    /** Abastecimento cujo posto está sendo avaliado (null: só a pergunta do depois). */
+    fill: FuelLog | null;
+    bomba: Vote; atendimento: Vote; banheiro: Vote; stars: number | null;
+    existed: boolean; locked: boolean;
+    /** Abastecimento sobre cujo combustível se pergunta "como o carro andou" (o anterior, ou o próprio pelo histórico). */
+    after: FuelLog | null; afterVal: AfterEffect | null; afterLocked: boolean;
+    /** Logo depois de salvar um abastecimento. */
+    saved: FuelLog | null;
+  };
+  let rating: Sheet | null = null;
+  const canRateNow = async () => S.prefs.contribute && !!(await currentSession());
+
+  /** Depois de salvar: avaliar o posto de agora e perguntar do combustível do abastecimento anterior (o posto dele). */
+  async function openAfterSave(row: FuelLog): Promise<boolean> {
+    if (!(await canRateNow())) return false;
+    const today = todayISO();
+    const fill = row.station_id && ageDays(row.date, today) <= MAX_DAYS ? row : null;
+    const logs = await db.fuel_logs.where('vehicle_id').equals(row.vehicle_id).toArray();
+    const prev = previousFill(logs, row);
+    const after = prev && canAskAfter(prev, today, S.ratings[prev.id]) ? prev : null;
+    if (!fill && !after) return false;
+    rating = { fill, bomba: null, atendimento: null, banheiro: null, stars: null, existed: false, locked: false, after, afterVal: null, afterLocked: false, saved: row };
+    renderRating();
+    openSheet('rate-sheet');
+    return true;
+  }
+
+  /** Pelo histórico: ver, mudar ou apagar a avaliação de um abastecimento, e dizer como o carro andou com ele. */
+  function openRating(fillId: string) {
+    db.fuel_logs.get(fillId).then(async (f) => {
       if (!f || !f.station_id) return;
       const prev = S.ratings[fillId];
+      const today = todayISO();
+      const locked = ageDays(f.date, today) > MAX_DAYS;
+      const logs = await db.fuel_logs.where('vehicle_id').equals(f.vehicle_id).toArray();
+      const showAfter = !!prev?.after_effect || usedEnough(f, logs, today);
       rating = {
-        fill: f, bomba: prev?.bomba ?? null, atendimento: prev?.atendimento ?? null, banheiro: prev?.banheiro ?? null,
-        justSaved, existed: !!prev, locked: ageDays(f.date, todayISO()) > 30,
+        fill: f, bomba: prev?.bomba ?? null, atendimento: prev?.atendimento ?? null, banheiro: prev?.banheiro ?? null, stars: prev?.stars ?? null,
+        existed: !!prev, locked, after: showAfter ? f : null, afterVal: prev?.after_effect ?? null, afterLocked: locked, saved: null,
       };
       renderRating();
       openSheet('rate-sheet');
     });
   }
+
+  const stationName = (f: FuelLog) => {
+    const st = f.station_id ? postos.byId(f.station_id) : null;
+    return st ? postos.nameOf(st) : (f.station ?? 'o posto').split(' · ')[0];
+  };
+  const STAR = '<svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24"><path d="M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="currentColor"/></svg>';
+
   function renderRating() {
     if (!rating) return;
     const r = rating;
-    const f = r.fill;
-    const s = f.station_id ? postos.byId(f.station_id) : null;
-    const name = s ? postos.nameOf(s) : (f.station ?? 'o posto').split(' · ')[0];
-    const q = (key: 'bomba' | 'atendimento' | 'banheiro', label: string, opts: [Vote, string][]) =>
-      '<div class="rate-q" role="radiogroup" aria-label="' + esc(label) + '"><span class="b15">' + label + '</span><div class="rate-opts">' +
-      opts.map(([v, t]) => '<button type="button" role="radio" data-k="' + key + '" data-v="' + (v ?? 0) + '" aria-checked="' + (r[key] === v && v !== null ? 'true' : 'false') + '"' + (r.locked ? ' disabled' : '') + '>' + t + '</button>').join('') + '</div></div>';
-    const n = (['bomba', 'atendimento', 'banheiro'] as const).filter((k) => r[k] !== null).length;
-    const what = fmt(f.liters, 1) + ' l de ' + (f.fuel === 'etanol' ? 'etanol' : f.fuel) + ' · ' + brl(f.total_brl) + ' · ' + esc(name);
-    const head = r.justSaved
-      ? '<div class="saved-row"><span class="ok-ic">' + ICON.check + '</span><span class="mid"><span class="a">Abastecimento salvo</span><span class="b">' + what + '</span></span></div>' +
-        '<div class="rate-head"><h2 id="rate-title">Como foi no posto?</h2><span class="hint">Opcional. Entra na média do posto sem o seu nome.</span></div>'
-      : '<div class="rate-head"><h2 id="rate-title">' + (r.existed ? 'Sua avaliação' : 'Como foi no posto?') + '</h2><span class="hint">' + dm(f.date) + ' · ' + what + '</span></div>';
+    const parts: string[] = [];
+    if (r.saved) {
+      const f = r.saved;
+      parts.push('<div class="saved-row"><span class="ok-ic">' + ICON.check + '</span><span class="mid"><span class="a">Abastecimento salvo</span><span class="b">' + fmt(f.liters, 1) + ' l de ' + (f.fuel === 'etanol' ? 'etanol' : f.fuel) + ' · ' + brl(f.total_brl) + (f.station_id ? ' · ' + esc(stationName(f)) : '') + '</span></span></div>');
+    }
+    if (r.fill) {
+      const f = r.fill;
+      const q = (key: 'bomba' | 'atendimento' | 'banheiro', label: string, opts: [Vote, string][]) =>
+        '<div class="rate-q" role="radiogroup" aria-label="' + esc(label) + '"><span class="b15">' + label + '</span><div class="rate-opts">' +
+        opts.map(([v, t]) => '<button type="button" role="radio" data-k="' + key + '" data-v="' + (v ?? 0) + '" aria-checked="' + (r[key] === v && v !== null ? 'true' : 'false') + '"' + (r.locked ? ' disabled' : '') + '>' + t + '</button>').join('') + '</div></div>';
+      const stars = '<div class="stars" role="radiogroup" aria-label="Nota geral do posto">' +
+        [1, 2, 3, 4, 5].map((n) => '<button type="button" role="radio" data-star="' + n + '" aria-label="' + n + (n === 1 ? ' estrela' : ' estrelas') + '" aria-checked="' + (r.stars === n) + '" class="' + (r.stars != null && n <= r.stars ? 'on' : '') + '"' + (r.locked ? ' disabled' : '') + '>' + STAR + '</button>').join('') + '</div>';
+      parts.push(
+        '<div class="rate-head"><h2 id="rate-title">' + (r.saved ? 'Como foi no posto?' : r.existed ? 'Sua avaliação' : 'Como foi no posto?') + '</h2><span class="hint">' +
+        (r.saved ? 'Opcional. Entra na média do posto sem o seu nome.' : dm(f.date) + ' · ' + esc(stationName(f))) + '</span></div>' +
+        '<div class="rate-q"><span class="b15">Nota geral</span>' + stars + '</div>' +
+        q('bomba', 'A bomba marcou certo?', [[1, 'Sim'], [-1, 'Não'], [null, 'Não sei']]) +
+        q('atendimento', 'Atendimento', [[1, 'Bom'], [-1, 'Ruim'], [null, 'Não sei']]) +
+        q('banheiro', 'Banheiro', [[1, 'Bom'], [-1, 'Ruim'], [null, 'Não usei']]),
+      );
+    }
+    if (r.after) {
+      const a = r.after;
+      const same = r.fill?.id === a.id;
+      const delta = tankVsNormal(carIntervals(), a.id);
+      const measured = delta == null ? '' : '<span class="hint after-measured">Pelos seus números, esse tanque rendeu ' + (Math.abs(delta) < 0.02 ? 'como o seu normal' : Math.round(Math.abs(delta) * 100) + '% ' + (delta > 0 ? 'acima' : 'abaixo') + ' do seu normal') + '.</span>';
+      parts.push(
+        '<div class="rate-q after-q" role="radiogroup" aria-label="Como o carro andou"><span class="b15">' +
+        (same ? 'Como o carro andou com esse combustível?' : (r.fill || r.saved ? 'E o combustível anterior?' : 'Como o carro andou?')) + '</span>' +
+        (same ? '' : '<span class="hint">Abastecido em ' + dm(a.date) + ' no ' + esc(stationName(a)) + '. Desde então, o carro…</span>') + measured +
+        '<div class="after-opts">' + AFTER_OPTIONS.map(([v, t]) => '<button type="button" role="radio" data-after="' + v + '" aria-checked="' + (r.afterVal === v) + '"' + (r.afterLocked ? ' disabled' : '') + '>' + t + '</button>').join('') + '</div></div>',
+      );
+    }
+    if (!r.saved && !r.fill) parts.unshift('<div class="rate-head"><h2 id="rate-title">Como o carro andou?</h2></div>');
+    const n = (['bomba', 'atendimento', 'banheiro'] as const).filter((k) => r[k] !== null).length + (r.stars ? 1 : 0) + (r.afterVal && !r.afterLocked ? 1 : 0);
     const note = r.locked
       ? '<p class="hint">Já passaram 30 dias desse abastecimento: dá para apagar a avaliação, mas não mudar.</p>'
       : r.existed ? '<p class="hint">Entra na média do posto sem o seu nome. Mude as respostas ou apague.</p>' : '';
     const send = '<button type="button" class="btn primary" data-rate="send"' + (n ? '' : ' disabled') + '>' + (n ? (r.existed ? 'Salvar' : 'Enviar') : 'Escolha uma resposta') + '</button>';
-    const btns = r.justSaved
+    const btns = r.saved
       ? '<button type="button" class="btn" data-rate="skip">Pular</button>' + send
       : r.locked
         ? '<button type="button" class="btn" data-rate="skip">Fechar</button><button type="button" class="btn danger" data-rate="del">Apagar avaliação</button>'
         : r.existed
           ? '<button type="button" class="btn danger" data-rate="del">Apagar</button>' + send
           : '<button type="button" class="btn" data-rate="skip">Cancelar</button>' + send;
-    $('rate-body').innerHTML =
-      head +
-      q('bomba', 'A bomba marcou certo?', [[1, 'Sim'], [-1, 'Não'], [null, 'Não sei']]) +
-      q('atendimento', 'Atendimento', [[1, 'Bom'], [-1, 'Ruim'], [null, 'Não sei']]) +
-      q('banheiro', 'Banheiro', [[1, 'Bom'], [-1, 'Ruim'], [null, 'Não usei']]) +
-      note + '<div class="btn-row">' + btns + '</div>';
+    $('rate-body').innerHTML = parts.join('') + note + '<div class="btn-row">' + btns + '</div>';
   }
+
+  /** Grava (junta com o que já existe na avaliação daquele abastecimento). */
+  async function store(f: FuelLog, patch: Partial<RatingRow>) {
+    const cur = S.ratings[f.id];
+    await saveRating({
+      fuel_log_id: f.id, station_id: f.station_id!,
+      bomba: cur?.bomba ?? null, atendimento: cur?.atendimento ?? null, banheiro: cur?.banheiro ?? null,
+      stars: cur?.stars ?? null, after_effect: cur?.after_effect ?? null, after_at: cur?.after_at ?? null,
+      ...patch,
+    });
+    invalidateNetwork(f.station_id!);
+  }
+
   $('rate-body').addEventListener('click', async (e) => {
     const el = e.target as HTMLElement;
+    if (!rating) return;
     const b = el.closest<HTMLElement>('[data-k]');
-    if (b && rating && !rating.locked) {
+    if (b && !rating.locked) {
       const k = b.dataset.k as 'bomba';
       const v = Number(b.dataset.v) as 1 | -1 | 0;
       rating[k] = v === 0 ? null : rating[k] === v ? null : v;
       return renderRating();
     }
+    const st = el.closest<HTMLElement>('[data-star]');
+    if (st && !rating.locked) {
+      const v = Number(st.dataset.star);
+      rating.stars = rating.stars === v ? null : v;
+      return renderRating();
+    }
+    const af = el.closest<HTMLElement>('[data-after]');
+    if (af && !rating.afterLocked) {
+      const v = af.dataset.after as AfterEffect;
+      rating.afterVal = rating.afterVal === v ? null : v;
+      return renderRating();
+    }
     const act = el.closest<HTMLElement>('[data-rate]')?.dataset.rate;
-    if (!act || !rating) return;
-    const after = rating.justSaved;
+    if (!act) return;
+    const r = rating;
+    const after = !!r.saved;
     if (act === 'send') {
-      await saveRating({ fuel_log_id: rating.fill.id, station_id: rating.fill.station_id!, bomba: rating.bomba, atendimento: rating.atendimento, banheiro: rating.banheiro });
-      invalidateNetwork(rating.fill.station_id!);
-      toast(rating.existed ? 'Avaliação atualizada. A média do posto muda em até 5 minutos.' : 'Obrigado! Sua avaliação entra na média do posto.');
-    } else if (act === 'del') {
-      await deleteRating(rating.fill.id);
-      invalidateNetwork(rating.fill.station_id!);
+      const now = new Date().toISOString();
+      const sameAfter = r.after && r.fill && r.after.id === r.fill.id;
+      const hasRate = r.bomba != null || r.atendimento != null || r.banheiro != null || r.stars != null;
+      if (r.fill && (hasRate || r.existed || (sameAfter && r.afterVal))) {
+        await store(r.fill, {
+          bomba: r.bomba, atendimento: r.atendimento, banheiro: r.banheiro, stars: r.stars,
+          ...(sameAfter ? { after_effect: r.afterVal, after_at: r.afterVal ? S.ratings[r.fill.id]?.after_at ?? now : null } : {}),
+        });
+      }
+      if (r.after && !sameAfter && r.afterVal) await store(r.after, { after_effect: r.afterVal, after_at: now });
+      toast(r.existed ? 'Avaliação atualizada. A média do posto muda em até 5 minutos.' : 'Obrigado! Sua avaliação entra na média do posto.');
+    } else if (act === 'del' && r.fill) {
+      await deleteRating(r.fill.id);
+      invalidateNetwork(r.fill.station_id!);
       toast('Avaliação apagada. Sai da média do posto em até 5 minutos.');
     } else if (after) toast('Abastecimento salvo');
     rating = null;
     closeSheets(() => after && go('inicio'));
   });
 
-  return { open, openAt: (s: Station, fuel: Fuel | null, price: PricePoint | null) => open(null, { s, fuel, price }), openRating };
+  /** Resposta rápida do aviso no Início. */
+  async function answerAfter(fillId: string, v: AfterEffect) {
+    const f = await db.fuel_logs.get(fillId);
+    if (!f || !f.station_id) return;
+    await store(f, { after_effect: v, after_at: new Date().toISOString() });
+    toast('Obrigado! Isso ajuda a saber a qualidade do combustível de cada posto.');
+  }
+
+  return { open, openAt: (s: Station, fuel: Fuel | null, price: PricePoint | null) => open(null, { s, fuel, price }), openRating, answerAfter };
 }
 
 const PIN = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';

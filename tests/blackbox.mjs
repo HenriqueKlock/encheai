@@ -7,7 +7,7 @@ import { join } from 'node:path';
 const cfg = readFileSync(new URL('../src/config.ts', import.meta.url), 'utf8');
 const URL_ = cfg.match(/SUPABASE_URL = '([^']+)'/)[1];
 const KEY = cfg.match(/SUPABASE_PUBLISHABLE_KEY = '([^']+)'/)[1];
-const TABLES = ['vehicles', 'fuel_logs', 'services', 'service_items', 'user_settings', 'user_places', 'api_usage', 'ratings', 'station_live', 'feedback'];
+const TABLES = ['vehicles', 'fuel_logs', 'services', 'service_items', 'user_settings', 'user_places', 'api_usage', 'ratings', 'station_live', 'feedback', 'push_subscriptions', 'push_keys', 'push_reminders'];
 const FAKE_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhYWFhYWFhYS0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMGEiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImV4cCI6NDEwMjQ0NDgwMH0.assinatura-falsa';
 
 let fails = 0;
@@ -73,6 +73,17 @@ for (const fn of ['postos-google', 'excluir-conta', 'mcp']) {
   const meta = await fetch(URL_ + '/functions/v1/mcp/.well-known/oauth-protected-resource');
   const m = meta.ok ? await meta.json() : null;
   m?.authorization_servers?.[0] === URL_ + '/auth/v1' ? ok('mcp: metadados apontam para o login do Supabase') : bad('mcp: metadados do recurso protegido errados');
+}
+
+// lembretes: a chave pública é pública por natureza; o envio só aceita o segredo do banco
+{
+  const k = await fetch(URL_ + '/functions/v1/lembretes/chave');
+  const kj = k.ok ? await k.json() : null;
+  kj && typeof kj.publicKey === 'string' && Object.keys(kj).length === 1 ? ok('lembretes: devolve só a chave pública') : bad(`lembretes: /chave respondeu ${k.status} ${JSON.stringify(kj)}`);
+  for (const [who, h] of [['sem segredo', {}], ['com segredo inventado', { 'x-lembretes': 'a'.repeat(64) }], ['com token forjado', { Authorization: 'Bearer ' + FAKE_JWT }]]) {
+    const r = await fetch(URL_ + '/functions/v1/lembretes', { method: 'POST', headers: { 'Content-Type': 'application/json', ...h }, body: '{}' });
+    r.status === 401 ? ok(`lembretes: envio ${who} recusado (401)`) : bad(`lembretes: envio ${who} respondeu ${r.status}`);
+  }
 }
 
 // 5) Área administrativa do login

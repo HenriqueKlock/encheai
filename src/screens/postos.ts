@@ -2,7 +2,7 @@
 // Junta três fontes: o arquivo da ANP (cadastro, preços semanais, fiscalização), o Google (nota e foto,
 // guardados no aparelho por 7 dias) e a rede (preço pago, rendimento medido e avaliações de quem usa o app).
 import {
-  EVENT_LABEL, ageDays, bboxAround, bestWithoutPrice, goodShare, haversineKm, bestForStation, matchGoogle, nameTokens, recommend, sortRows, stationsFor, usageVerdict, yieldOf,
+  EVENT_LABEL, ageDays, bboxAround, bestWithoutPrice, goodShare, haversineKm, bestForStation, matchGoogle, nameTokens, recommend, starsOf, sortRows, stationsFor, usageVerdict, yieldOf,
   type Base, type CarModel, type Fuel, type GoogleMatch, type GoogleStation, type LatLon, type OwnPrice, type PricePoint,
   type Recommendation, type Station, type StationLive, type StationRow, type StationsFile, type StationUse,
 } from '../postos';
@@ -681,8 +681,17 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       const p = Math.round((t[0] / t[1]) * 100);
       return '<div class="rel-part"><div class="h"><span>' + label + '</span><b>' + p + '% ' + yes + '</b></div><div class="bar"><i style="width:' + p + '%"></i></div></div>';
     };
-    const ratBody = rat && (rat.bomba || rat.atendimento || rat.banheiro)
-      ? ratLine('bomba', 'Bomba marcou certo', 'sim') + ratLine('atendimento', 'Atendimento', 'bom') + ratLine('banheiro', 'Banheiro', 'bom')
+    const stars = starsOf(live);
+    const starsLine = stars
+      ? '<div class="stars-line"><span class="stars-avg">' + fmt(stars.avg, 1) + '</span><span class="stars-show" aria-hidden="true">' + [1, 2, 3, 4, 5].map((n) => '<i class="' + (stars.avg >= n - 0.25 ? 'on' : stars.avg >= n - 0.75 ? 'half' : '') + '">★</i>').join('') + '</span><span class="hint">' + pl(stars.n, 'nota', 'notas') + ' de quem abasteceu</span></div>'
+      : '';
+    const dp = rat?.depois;
+    const depoisLine = dp
+      ? '<div class="rel-part"><div class="h"><span>Depois de abastecer aqui, o carro</span><b>' + Math.round(((dp.normal + dp.melhor) / dp.n) * 100) + '% sem problema</b></div><div class="bar"><i style="width:' + Math.round(((dp.normal + dp.melhor) / dp.n) * 100) + '%"></i></div>' +
+        '<span class="hint">' + [pl(dp.n, 'resposta', 'respostas'), dp.melhor ? pl(dp.melhor, 'achou melhor', 'acharam melhor') : '', dp.falhou ? pl(dp.falhou, 'relato de falha', 'relatos de falha') : '', dp.rendeu_menos ? pl(dp.rendeu_menos, 'achou que rendeu menos', 'acharam que rendeu menos') : ''].filter(Boolean).join(' · ') + '</span></div>'
+      : '';
+    const ratBody = rat && (rat.bomba || rat.atendimento || rat.banheiro || stars || dp)
+      ? starsLine + depoisLine + ratLine('bomba', 'Bomba marcou certo', 'sim') + ratLine('atendimento', 'Atendimento', 'bom') + ratLine('banheiro', 'Banheiro', 'bom')
       : '<span class="hint">' + (rat?.n ? pl(rat.n, 'avaliação', 'avaliações') + ' até agora; cada item aparece com 3 respostas.' : 'Ainda sem avaliações. Depois de abastecer aqui, o app pergunta em um toque.') + '</span>';
     const ratCard =
       '<div class="card"><div class="card-head"><span>Quem abasteceu avaliou</span><span class="hint">' + (rat?.n ? pl(rat.n, 'avaliação', 'avaliações') + ' · 6 meses' : '') + '</span></div>' + ratBody +
@@ -697,7 +706,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const relCard =
       '<div class="card rel"><div class="card-head"><span>Confiabilidade</span><span class="hint">de 0 a 5</span></div>' +
       '<div class="rel-score"><b>' + fmt(rel.score, 1) + '</b><span class="score ' + rel.level + '">' + lvl + '</span></div>' +
-      (rel.netWarn ? '<p class="rec-warn">' + ICON.warn + '<span>' + (rel.netWarn === 'rendimento' ? 'Os tanques daqui rendem abaixo do normal para quem usa o app.' : 'Muita gente disse que a bomba não marcou certo.') + ' A nota fica limitada a “atenção”.</span></p>' : '') +
+      (rel.netWarn ? '<p class="rec-warn">' + ICON.warn + '<span>' + (rel.netWarn === 'rendimento' ? 'Os tanques daqui rendem abaixo do normal para quem usa o app.' : rel.netWarn === 'falhas' ? 'Vários relatos de carro falhando depois de abastecer aqui.' : 'Muita gente disse que a bomba não marcou certo.') + ' A nota fica limitada a “atenção”.</span></p>' : '') +
       '<div class="rel-part"><div class="h"><span>Fiscalização da ANP (5 anos)</span><b>' + fmt(rel.anp, 1) + '</b></div><div class="bar"><i style="width:' + Math.round((rel.anp / 5) * 100) + '%"></i></div><span class="hint">' + esc(anpTxt) + '</span></div>' +
       (ev.length ? '<ul class="ev-list">' + ev.slice(0, 6).map(([d, t, txt]) => '<li><span class="d">' + dm(d) + '/' + d.slice(2, 4) + '</span><span><b>' + EVENT_LABEL[t] + '</b>' + (txt ? ' · ' + esc(txt.replace(/^(Notificação|MRC)\s*-\s*(PR ?Comb\s*-\s*)?/i, '')) : '') + '</span></li>').join('') + '</ul>' : '') +
       '<details class="more"><summary>Como a nota é calculada<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary><p class="hint">Começa em 5 e cada ocorrência da ANP nos últimos 5 anos desconta, mais quanto mais recente e mais grave. Infração de bomba, volume ou qualidade nos últimos 12 meses limita a nota em 2,5 e tira o posto da recomendação. A média do Google entra com peso de 35%, puxada para 4,0 quando há poucas avaliações. Rendimento medido abaixo de 95% ou bomba mal avaliada limitam a nota a 3,4. O rendimento medido também entra no custo por km da recomendação.</p></details></div>';
