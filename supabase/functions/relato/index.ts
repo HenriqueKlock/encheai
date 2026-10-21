@@ -2,6 +2,7 @@
 // e manda um e-mail para o dono pelo Resend. O destino e a chave ficam nos segredos do Supabase
 // (RESEND_API_KEY, RELATO_PARA e, com domínio verificado, RELATO_DE); nada disso fica no repositório.
 // Funciona com ou sem login (quem não consegue entrar também precisa relatar), com limite por hora.
+// Até 3 prints (imagens) por relato: vão para o bucket privado `relatos` e seguem anexados no e-mail.
 const ALLOWED_ORIGINS = ['https://henriqueklock.github.io', 'http://localhost:5173', 'http://localhost:4173', 'http://localhost:4190'];
 const URL_ = Deno.env.get('SUPABASE_URL') ?? '';
 const ANON = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -30,6 +31,29 @@ async function currentUser(req: Request): Promise<{ id: string; email: string | 
 }
 
 const admin = { apikey: SERVICE, Authorization: 'Bearer ' + SERVICE, 'Content-Type': 'application/json' };
+const MAX_PRINTS = 3, MAX_BYTES = 3 * 1024 * 1024;
+
+interface Print { bytes: Uint8Array; type: 'image/jpeg' | 'image/png' | 'image/webp'; ext: string; b64: string }
+
+/** Confere cada print pelo conteúdo (não pelo nome): JPEG, PNG ou WebP, até 3 MB. */
+function prints(raw: unknown): Print[] | string {
+  if (raw == null) return [];
+  if (!Array.isArray(raw) || raw.length > MAX_PRINTS) return 'Envie no máximo ' + MAX_PRINTS + ' imagens.';
+  const out: Print[] = [];
+  for (const p of raw) {
+    const b64 = typeof p?.dados === 'string' ? p.dados.replace(/^data:[^,]*,/, '') : '';
+    if (!b64 || b64.length > Math.ceil(MAX_BYTES * 4 / 3) + 4) return 'Imagem grande demais (máximo 3 MB).';
+    let bytes: Uint8Array;
+    try { bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); } catch { return 'Imagem inválida.'; }
+    const h = bytes.subarray(0, 12);
+    const isJpg = h[0] === 0xff && h[1] === 0xd8 && h[2] === 0xff;
+    const isPng = h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4e && h[3] === 0x47;
+    const isWebp = String.fromCharCode(...h.subarray(0, 4)) === 'RIFF' && String.fromCharCode(...h.subarray(8, 12)) === 'WEBP';
+    if (!isJpg && !isPng && !isWebp) return 'Só dá para anexar imagens (JPG, PNG ou WebP).';
+    out.push({ bytes, b64, type: isJpg ? 'image/jpeg' : isPng ? 'image/png' : 'image/webp', ext: isJpg ? 'jpg' : isPng ? 'png' : 'webp' });
+  }
+  return out;
+}
 const clip = (v: unknown, n: number) => (typeof v === 'string' ? v.replace(/\s+$/g, '').slice(0, n) : '');
 
 async function recentCount(filter: string): Promise<number> {
@@ -52,6 +76,8 @@ Deno.serve(async (req) => {
   const kind = b?.tipo === 'sugestao' ? 'sugestao' : b?.tipo === 'problema' ? 'problema' : null;
   const message = clip(b?.mensagem, 4000).trim();
   if (!kind || message.length < 3) return json(400, { error: 'Escreva o que aconteceu ou a sua ideia.' });
+  const imgs = prints(b?.prints);
+  if (typeof imgs === 'string') return json(400, { error: imgs });
 
   const user = await currentUser(req);
   // limite: 10 por hora por conta; sem login, 20 por hora no total
@@ -70,6 +96,16 @@ Deno.serve(async (req) => {
   }
   const saved = (await ins.json())[0];
 
+  // prints no bucket privado
+  const paths: string[] = [];
+  for (const [i, img] of imgs.entries()) {
+    const path = saved.id + '/' + (i + 1) + '.' + img.ext;
+    const up = await fetch(URL_ + '/storage/v1/object/relatos/' + path, { method: 'POST', headers: { apikey: SERVICE, Authorization: 'Bearer ' + SERVICE, 'Content-Type': img.type, 'x-upsert': 'true' }, body: new Blob([img.bytes as BlobPart], { type: img.type }) });
+    if (up.ok) paths.push(path);
+    else console.error(JSON.stringify({ event: 'relato-erro-print', status: up.status }));
+  }
+  if (paths.length) await fetch(URL_ + '/rest/v1/feedback?id=eq.' + saved.id, { method: 'PATCH', headers: admin, body: JSON.stringify({ attachments: paths }) });
+
   // e-mail para o dono (se configurado)
   const key = Deno.env.get('RESEND_API_KEY');
   const to = Deno.env.get('RELATO_PARA');
@@ -84,6 +120,7 @@ Deno.serve(async (req) => {
       '— De: ' + (user?.email ?? contact ?? 'sem login, sem contato'),
       '— Tela: ' + (row.page ?? '-') + ' · versão ' + (row.app_version ?? '-'),
       '— Aparelho: ' + (row.device ?? '-'),
+      '— Prints: ' + (imgs.length ? imgs.length + ' (anexados; também no Storage, bucket relatos/' + saved.id + ')' : 'nenhum'),
       '— Id: ' + saved.id,
     ].join('\n');
     try {
@@ -96,6 +133,7 @@ Deno.serve(async (req) => {
           subject: (kind === 'problema' ? '[Problema] ' : '[Sugestão] ') + message.replace(/\s+/g, ' ').slice(0, 70),
           text,
           ...(replyTo ? { reply_to: replyTo } : {}),
+          ...(imgs.length ? { attachments: imgs.map((img, i) => ({ filename: 'print-' + (i + 1) + '.' + img.ext, content: img.b64 })) } : {}),
         }),
       });
       emailed = r.ok;
@@ -105,6 +143,6 @@ Deno.serve(async (req) => {
     }
     if (emailed) await fetch(URL_ + '/rest/v1/feedback?id=eq.' + saved.id, { method: 'PATCH', headers: admin, body: JSON.stringify({ emailed: true }) });
   }
-  console.log(JSON.stringify({ event: 'relato', kind, logged: !!user, emailed }));
+  console.log(JSON.stringify({ event: 'relato', kind, logged: !!user, emailed, prints: paths.length }));
   return json(200, { ok: true });
 });

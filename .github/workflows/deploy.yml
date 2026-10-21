@@ -36,6 +36,8 @@ jobs:
       - run: npm test
       - name: Conector MCP (servidor com o Supabase simulado)
         run: npx -y deno@2 run --allow-env --allow-net --allow-read tests/mcp-servidor.deno.ts
+      - name: Relatos (função com Supabase e Resend simulados)
+        run: npx -y deno@2 run --allow-env --allow-net --allow-read tests/relato-servidor.deno.ts
       - run: npm run build
       - name: Segurança (caixa preta, só com o que é público)
         run: node tests/blackbox.mjs dist

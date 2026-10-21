@@ -52,6 +52,8 @@ refresh.status >= 400 ? ok(`recálculo da rede fechado (${refresh.status})`) : b
 // 3) Arquivos de OS
 const list = await call('/storage/v1/object/list/os', { method: 'POST', body: { prefix: '', limit: 100 } });
 closed(list) ? ok(`arquivos de OS: listagem sem login vazia/bloqueada (${list.status})`) : bad(`arquivos de OS: listou ${list.data.length} item(ns) sem login`);
+const rel = await call('/storage/v1/object/list/relatos', { method: 'POST', body: { prefix: '', limit: 100 } });
+closed(rel) ? ok(`prints dos relatos: listagem sem login vazia/bloqueada (${rel.status})`) : bad(`prints dos relatos: listou ${rel.data.length} item(ns) sem login`);
 const pub = await fetch(URL_ + '/storage/v1/object/public/os/qualquer.pdf');
 pub.status >= 400 ? ok(`arquivos de OS: sem link público (${pub.status})`) : bad('arquivos de OS acessíveis por link público');
 
