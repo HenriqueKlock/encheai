@@ -306,8 +306,10 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const car = carInfo();
     const best = rec.best!;
     const dist = b.kind === 'rota' ? (best.distKm < 0.15 ? 'no caminho' : '+' + kmTxt(best.extraKm) + ' de desvio') : kmTxt(best.distKm);
-    const tiles = rec.bestOther
-      ? '<div class="rec-tiles"><div><span>Custo por km</span><b>' + brl(best.costPerKm) + '</b></div><div><span>vs. ' + FUEL[rec.bestOther.fuel].toLowerCase() + ' mais em conta</span><b class="up">−' + brl(rec.bestOther.cost - best.cost) + '</b></div></div>'
+    // o outro combustível só aparece como comparação quando de fato sai mais caro
+    const other = rec.bestOther && rec.bestOther.cost - best.cost >= 0.5 ? rec.bestOther : null;
+    const tiles = other
+      ? '<div class="rec-tiles"><div><span>Custo por km</span><b>' + brl(best.costPerKm) + '</b></div><div><span>vs. ' + FUEL[other.fuel].toLowerCase() + ' mais em conta</span><b class="up">−' + brl(other.cost - best.cost) + '</b></div></div>'
       : '<div class="rec-tiles"><div><span>Custo por km</span><b>' + brl(best.costPerKm) + '</b></div><div><span>Para rodar ' + Math.round(car.model.kmTank) + ' km</span><b>' + brl(best.cost) + '</b></div></div>';
     const foot = [
       car.model.fuels.length > 1 ? 'Etanol rende ' + Math.round((car.model.kmlE / car.model.kmlG) * 100) + '% da gasolina no ' + esc(car.name) + (car.model.measured ? ' (medido)' : ' (estimado)') : '',
@@ -1014,7 +1016,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     el.innerHTML =
       '<div class="rec-card"><button type="button" class="rec-main" data-home-posto="' + b.s.c + '" data-base="' + kind + '"><span class="l">' + where + '</span>' +
       '<span class="t">' + FUEL[b.fuel] + ' no ' + esc(nm(b.s)) + '</span>' +
-      '<span class="s">' + brl(b.price.price) + '/l · ' + dist + (rec.bestOther ? ' · ' + brl(rec.bestOther.cost - b.cost) + ' a menos que ' + FUEL[rec.bestOther.fuel].toLowerCase() : '') + '</span>' +
+      '<span class="s">' + brl(b.price.price) + '/l · ' + dist + (rec.bestOther && rec.bestOther.cost - b.cost >= 0.5 ? ' · ' + brl(rec.bestOther.cost - b.cost) + ' a menos que ' + FUEL[rec.bestOther.fuel].toLowerCase() : '') + '</span>' +
       '<span class="rec-badges"><span class="nb on-dark ' + b.price.src + '">' + priceWho(b.price) + '</span>' + badges.replace(/class="nb/g, 'class="nb on-dark') + '<span class="nb on-dark">ANP ' + fmt(b.rel.anp, 1) + '</span></span>' +
       (favTxt ? '<span class="f">' + esc(favTxt) + '</span>' : '') + (cheapTxt ? '<span class="f cheap-f">' + esc(cheapTxt) + '</span>' : '') + '</button>' +
       '<a class="more" href="#/postos" data-home-base="' + kind + '">Ver outros postos ' + ICON.chev + '</a></div>';
