@@ -5,7 +5,7 @@ manutenção) que funciona sem internet, ligado a uma rede de postos. A rede mos
 o rendimento medido do combustível e avaliações de um toque, além da fiscalização da ANP e das notas do Google.
 
 - App: https://henriqueklock.github.io/encheai/
-- Desenho do produto e telas: documento “Caderneta do Carro 2.0 — desenho do produto” (nome antigo) e o canvas de design.
+- Desenho do produto e telas: documento “Enche Aí — desenho do produto” (com a trilha de IA) e o canvas de design.
 - Nasceu como Caderneta do Carro; o app anterior continua em https://henriqueklock.github.io/caderneta-carro/.
 
 ## Como funciona
