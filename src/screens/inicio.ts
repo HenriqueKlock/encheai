@@ -3,7 +3,7 @@
 import { aggregate, kmPerDay } from '../calc';
 import { CATALOG, computeIndicators, monthKey, monthName } from '../indicators';
 import { itemStates, lastDoneByKey, progressOf, sortStates } from '../maintenance';
-import { planByKey } from '../plans';
+import { planOf } from '../plans';
 import { sparkBars } from '../charts';
 import { currentKmOf } from '../manut';
 import { S, carIntervals, carLogs, current, subscribe } from '../store';
@@ -61,7 +61,7 @@ export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel
   }
 
   function nextMaintenanceCard(v: Vehicle): string {
-    const plan = planByKey(v.plan_key);
+    const plan = planOf(v);
     const fs = carLogs();
     if (!plan) return '';
     const curKm = currentKmOf(v, fs, S.services);

@@ -677,3 +677,16 @@ a.next-card { text-decoration: none; }
 .aut-list li.no svg { color: var(--muted); }
 .aut-list li.no { color: var(--muted); }
 .conn-row { display: flex; align-items: center; gap: 10px; }
+
+/* editor do plano de manutenção */
+.plan-edit { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.plan-edit .r1 { display: flex; gap: 8px; align-items: center; }
+.plan-edit .r1 .inp { flex: 1; min-width: 0; font-weight: 600; }
+.plan-edit .r2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.plan-edit .mini { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.plan-edit .mini span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.plan-edit .mini .inp { width: 100%; min-width: 0; padding-left: 10px; padding-right: 6px; }
+.check-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 14px; color: var(--muted); }
+.check-row input { width: 18px; height: 18px; margin: 1px 0 0; }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+#relato-msg { min-height: 120px; resize: vertical; }

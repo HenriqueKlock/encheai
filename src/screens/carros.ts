@@ -84,6 +84,7 @@ export function initCarros() {
       fuel_type: val('v-fuel') as VehicleFuel,
       initial_km: Number.isFinite(ikm) ? ikm : null,
       plan_key: editingVehicle?.plan_key ?? null,
+      plan_custom: editingVehicle?.plan_custom ?? null,
       archived: 0,
     });
     await db.vehicles.put(row);

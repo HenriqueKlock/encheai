@@ -7,7 +7,7 @@ import { join } from 'node:path';
 const cfg = readFileSync(new URL('../src/config.ts', import.meta.url), 'utf8');
 const URL_ = cfg.match(/SUPABASE_URL = '([^']+)'/)[1];
 const KEY = cfg.match(/SUPABASE_PUBLISHABLE_KEY = '([^']+)'/)[1];
-const TABLES = ['vehicles', 'fuel_logs', 'services', 'service_items', 'user_settings', 'user_places', 'api_usage', 'ratings', 'station_live'];
+const TABLES = ['vehicles', 'fuel_logs', 'services', 'service_items', 'user_settings', 'user_places', 'api_usage', 'ratings', 'station_live', 'feedback'];
 const FAKE_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhYWFhYWFhYS0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMGEiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImV4cCI6NDEwMjQ0NDgwMH0.assinatura-falsa';
 
 let fails = 0;

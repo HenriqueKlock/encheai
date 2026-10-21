@@ -20,6 +20,8 @@ export interface Vehicle extends SyncFields {
   fuel_type: VehicleFuel;
   initial_km: number | null;
   plan_key: string | null;
+  /** Plano ajustado pela pessoa (itens e intervalos). */
+  plan_custom?: import('./plans').CustomPlan | null;
   archived: 0 | 1;
 }
 

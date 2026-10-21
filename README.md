@@ -21,6 +21,7 @@ o rendimento medido do combustível e avaliações de um toque, além da fiscali
   - Funções:
     - `postos-google`: notas, fotos e sugestões de endereço, com cota diária por conta.
     - `excluir-conta`: apaga a conta e tudo dela (só pelo próprio app, nunca por app conectado).
+    - `relato`: problema ou sugestão enviado pelo Perfil; guarda em `feedback` (só o dono lê, pelo painel) e manda e-mail pelo Resend.
     - `mcp`: conector para o Claude (MCP por HTTP). Login pelo OAuth 2.1 do Supabase; ferramentas para listar carros, ver histórico, conferir e importar. Apps conectados (token com `client_id`) só leem carros e histórico e acrescentam registros; políticas restritivas no banco garantem isso.
 - **Trazer histórico (`#/importar`):** planilha .csv/.xlsx sem IA (`src/planilha.ts`), resposta da IA da pessoa no formato `encheai-importacao-1` (`src/importacao.ts`, o mesmo arquivo roda na função `mcp`) e backup. Tudo passa por uma prévia que tira duplicados.
 - **Dados da ANP:** `pipeline/postos.py` roda no GitHub Actions (`dados.yml`, terça e sábado). Gera `postos-SC.json` na branch `dados`, que o deploy publica em `/dados/`.
@@ -55,7 +56,8 @@ Conector MCP com o Supabase simulado: `npx -y deno@2 run --allow-env --allow-net
 2. Supabase › Edge Functions › Secrets: `GOOGLE_MAPS_API_KEY`. A chave nunca passa pelo chat nem pelo repositório.
 3. GitHub › Settings › Pages: Source = GitHub Actions.
 4. Opcional: SMTP próprio (Resend ou Brevo) em Authentication › Emails, para passar do limite de e-mails de login.
-5. Conector do Claude: Supabase › Authentication › OAuth Server: ligar o servidor OAuth 2.1, Authorization Path `/autorizar` e permitir registro dinâmico de clientes. A tela de autorização é `#/autorizar` (com `autorizar/index.html` e `404.html` encaminhando o `authorization_id`).
+5. Relatos por e-mail: Supabase › Edge Functions › Secrets: `RESEND_API_KEY` e `RELATO_PARA` (e-mail que recebe). Com domínio verificado no Resend, também `RELATO_DE` (ex.: `Enche Aí <nao-responda@seu-dominio>`). Sem eles, os relatos ficam só na tabela `feedback`.
+6. Conector do Claude: Supabase › Authentication › OAuth Server: ligar o servidor OAuth 2.1, Authorization Path `/autorizar` e permitir registro dinâmico de clientes. A tela de autorização é `#/autorizar` (com `autorizar/index.html` e `404.html` encaminhando o `authorization_id`).
 
 ## Próximas etapas
 

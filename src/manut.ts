@@ -1,6 +1,6 @@
 import { db, softDelete, stamp, uuid, type FuelLog, type PendingFile, type Service, type ServiceItem, type Vehicle } from './db';
 import { kmPerDay } from './calc';
-import { PLANS, planByKey } from './plans';
+import { BASIC_PLAN, customKey, planByKey, planOf, templatesFor, type CustomPlan, type PlanItem } from './plans';
 import { dueByKm, itemStates, lastDoneByKey, maintenanceTotals, progressOf, sortStates, type ItemState } from './maintenance';
 import { ICON } from './icons';
 import { attachmentUrl } from './sync';
@@ -110,7 +110,7 @@ export function initMaintenance(c: MaintCtx) {
       $('m-target-card').hidden = true;
       return;
     }
-    const plan = planByKey(v.plan_key);
+    const plan = planOf(v);
     const curKm = currentKmOf(v, d.logs, d.services);
     const today = c.todayISO();
     const kpd = kmPerDay(d.logs);
@@ -119,12 +119,17 @@ export function initMaintenance(c: MaintCtx) {
 
     if (!plan) {
       $('m-alert').innerHTML = '';
+      const tpls = templatesFor(v);
+      const opt = (id: string, icon: string, a: string, b: string) =>
+        '<button type="button" class="row nav" data-plan="' + esc(id) + '"><span class="ic gray">' + icon + '</span><span class="mid"><span class="a">' + esc(a) + '</span><span class="b">' + esc(b) + '</span></span><span class="chev">' + ICON.chev + '</span></button>';
       $('m-next').innerHTML =
-        '<div class="set-row col"><div><div class="t">Este carro ainda não tem plano de manutenção</div><div class="d">Escolha um plano para o app calcular as próximas trocas.</div></div><div class="btn-row"><select class="inp sm" id="m-plan-pick" aria-label="Plano">' +
-        PLANS.map((p) => '<option value="' + esc(p.key) + '">' + esc(p.name) + '</option>').join('') +
-        '</select><button type="button" class="btn primary" id="m-plan-use">Usar este plano</button></div></div>';
+        '<div class="set-row col"><div><div class="t">Monte o plano de manutenção do ' + esc(v.name) + '</div><div class="d">Com ele o app avisa quando trocar óleo, filtros e o resto. Você ajusta tudo depois.</div></div></div>' +
+        opt('tpl:' + BASIC_PLAN.key, ICON.wrench, 'Começar pelo plano básico', 'Intervalos comuns da maioria dos carros; ajuste pelo manual') +
+        tpls.filter((t) => t.key !== BASIC_PLAN.key).map((t) => opt('tpl:' + t.key, ICON.wrench, 'Plano do fabricante: ' + t.name, t.summary)).join('') +
+        opt('new', ICON.plus, 'Montar do zero', 'Escolha os itens e os intervalos') +
+        '<a class="row nav" href="#/importar"><span class="ic gray">' + ICON.chart + '</span><span class="mid"><span class="a">Importar OS ou planilha</span><span class="b">O histórico entra nas idas à oficina; com um plano, vira a base das próximas trocas</span></span><span class="chev">' + ICON.chev + '</span></a>';
       $('m-more').hidden = true;
-      $('m-plan-note').textContent = 'Por enquanto há plano só para o Hyundai Creta; os carros mais vendidos chegam nas próximas versões.';
+      $('m-plan-note').textContent = 'Sem plano, você ainda pode registrar cada ida à oficina pelo botão acima.';
       $('m-target-card').hidden = true;
     } else {
       const states = sortStates(itemStates(plan, lastDoneByKey(v.id, d.services, d.items), curKm, today, kpd));
@@ -142,7 +147,8 @@ export function initMaintenance(c: MaintCtx) {
       $('m-more').hidden = states.length <= SHOW_FIRST;
       $('m-more').textContent = expanded ? 'Mostrar menos' : 'Ver o plano completo (' + states.length + ' itens)';
       $('m-plan-note').innerHTML =
-        esc(plan.name) + '. ' + esc(plan.summary) + ' Fontes: ' + plan.sources.map((x) => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.label) + '</a>').join(' · ');
+        esc(plan.name) + '. ' + esc(plan.summary) + (plan.sources.length ? ' Fontes: ' + plan.sources.map((x) => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.label) + '</a>').join(' · ') + '.' : '') +
+        ' <button type="button" class="link-btn" id="m-plan-edit">Editar plano</button>';
       // Quando chegar em X km
       $('m-target-card').hidden = false;
       const tEl = $<HTMLInputElement>('m-target');
@@ -232,10 +238,14 @@ export function initMaintenance(c: MaintCtx) {
       expanded = !expanded;
       return render(data);
     }
-    if (btn.id === 'm-plan-use' && data.vehicle) {
-      const key = $<HTMLSelectElement>('m-plan-pick').value;
-      await db.vehicles.put(stamp<Vehicle>({ ...data.vehicle, plan_key: key }));
-      return toast('Plano aplicado a ' + data.vehicle.name);
+    if (btn.dataset.plan && data.vehicle) {
+      const id = btn.dataset.plan;
+      const tpl = id.startsWith('tpl:') ? planByKey(id.slice(4)) : undefined;
+      return openPlan(tpl ? { base: tpl.key, items: tpl.items.map((i) => ({ ...i })) } : { base: null, items: [] }, true);
+    }
+    if (btn.id === 'm-plan-edit' && data.vehicle) {
+      const cur = planOf(data.vehicle);
+      return openPlan({ base: data.vehicle.plan_custom?.base ?? data.vehicle.plan_key ?? null, items: (cur?.items ?? []).map((i) => ({ ...i })) }, false);
     }
     if (btn.dataset.svc) return openService(btn.dataset.svc);
   });
@@ -246,13 +256,141 @@ export function initMaintenance(c: MaintCtx) {
     render(data);
   });
 
+  /* ---------- plano do carro: adotar um modelo, montar do zero, ajustar ou remover ---------- */
+  let draft: CustomPlan | null = null;
+  let draftNew = false;
+  let planDelArmed = false;
+  const COMMON: [string, string, PlanItem['action'], number | null, number | null][] = [
+    ...BASIC_PLAN.items.map((i) => [i.key, i.description, i.action, i.interval_km, i.interval_months] as [string, string, PlanItem['action'], number | null, number | null]),
+    ['fluido_cambio', 'Fluido do câmbio', 'trocar', 60000, null],
+    ['meu_pastilhas_de_freio', 'Pastilhas de freio', 'inspecionar', 10000, null],
+    ['meu_alinhamento_e_balanceamento', 'Alinhamento e balanceamento', 'trocar', 10000, 12],
+    ['meu_correia_dentada', 'Correia dentada', 'trocar', 60000, 48],
+    ['meu_pneus', 'Pneus', 'inspecionar', 10000, 12],
+  ];
+
+  function openPlan(p: CustomPlan, isNew: boolean) {
+    draft = p;
+    draftNew = isNew;
+    planDelArmed = false;
+    renderPlan();
+    c.openSheet('plan-sheet');
+  }
+
+  function renderPlan() {
+    if (!draft || !data.vehicle) return;
+    const base = planByKey(draft.base);
+    const num = (n: number | null) => (n == null ? '' : String(n));
+    $('plan-title').textContent = draftNew ? 'Plano do ' + data.vehicle.name : 'Editar plano';
+    $('plan-sub').textContent = base ? 'Partindo de: ' + base.name + '. Ajuste pelo manual do seu carro; deixe em branco o que não tiver intervalo.' : 'Escolha os itens e os intervalos. Deixe em branco o que não tiver intervalo.';
+    $('plan-items').innerHTML = draft.items.length
+      ? draft.items.map((it, i) =>
+          '<div class="plan-edit" data-i="' + i + '">' +
+          '<div class="r1"><input class="inp sm" data-p="description" value="' + esc(it.description) + '" aria-label="Item"><button type="button" class="link-btn muted" data-prm="' + i + '" aria-label="Tirar do plano">Tirar</button></div>' +
+          '<div class="r2"><label class="mini"><span>O que fazer</span><select class="inp sm" data-p="action"><option value="trocar"' + (it.action === 'trocar' ? ' selected' : '') + '>Trocar</option><option value="inspecionar"' + (it.action === 'inspecionar' ? ' selected' : '') + '>Inspecionar</option></select></label>' +
+          '<label class="mini"><span>A cada (km)</span><input class="inp sm" data-p="interval_km" inputmode="numeric" placeholder="—" value="' + num(it.interval_km) + '"></label>' +
+          '<label class="mini"><span>Ou (meses)</span><input class="inp sm" data-p="interval_months" inputmode="numeric" placeholder="—" value="' + num(it.interval_months) + '"></label></div></div>').join('')
+      : '<div class="empty">Nenhum item ainda. Adicione abaixo.</div>';
+    const have = new Set(draft.items.map((i) => i.key));
+    $('plan-add').innerHTML = '<option value="">+ Adicionar item…</option>' + COMMON.filter(([k]) => !have.has(k)).map(([k, d]) => '<option value="' + esc(k) + '">' + esc(d) + '</option>').join('') + '<option value="__outro">Outro (escrever)</option>';
+    $('plan-del').hidden = draftNew;
+    $('plan-del').textContent = planDelArmed ? 'Confirmar: remover o plano' : 'Remover plano';
+    $('plan-del').classList.toggle('armed', planDelArmed);
+  }
+
+  /** Lê os campos da folha para o rascunho (sem redesenhar, para não perder o foco). */
+  function readPlan() {
+    if (!draft) return;
+    document.querySelectorAll<HTMLElement>('#plan-items .plan-edit').forEach((row) => {
+      const it = draft!.items[Number(row.dataset.i)];
+      if (!it) return;
+      const q = (k: string) => row.querySelector<HTMLInputElement>('[data-p="' + k + '"]')!.value;
+      it.description = q('description').trim().slice(0, 80) || it.description;
+      it.action = q('action') as PlanItem['action'];
+      const kmv = c.parseIntLoose(q('interval_km')), mv = c.parseIntLoose(q('interval_months'));
+      it.interval_km = Number.isFinite(kmv) && kmv > 0 ? kmv : null;
+      it.interval_months = Number.isFinite(mv) && mv > 0 ? mv : null;
+    });
+  }
+
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    `<form class="sheet full" id="plan-sheet" novalidate aria-labelledby="plan-title">
+      <div class="sheet-bar">
+        <button type="button" class="text-btn" data-close style="justify-self:start">Cancelar</button>
+        <h2 id="plan-title">Plano</h2>
+        <span></span>
+      </div>
+      <div class="sheet-body"><div class="stack">
+        <p class="hint" id="plan-sub"></p>
+        <div id="plan-items" class="view" style="gap:10px"></div>
+        <select class="inp sm" id="plan-add" aria-label="Adicionar item ao plano"></select>
+        <p class="hint">Remover o plano não apaga as idas à oficina já registradas.</p>
+        <button type="button" class="btn danger" id="plan-del">Remover plano</button>
+      </div></div>
+      <div class="sheet-foot"><button type="submit" class="btn primary block">Salvar plano</button></div>
+    </form>`,
+  );
+  $('plan-items').addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-prm]');
+    if (!b || !draft) return;
+    readPlan();
+    draft.items.splice(Number(b.dataset.prm), 1);
+    renderPlan();
+  });
+  $('plan-add').addEventListener('change', () => {
+    const sel = $<HTMLSelectElement>('plan-add');
+    if (!draft || !sel.value) return;
+    readPlan();
+    if (sel.value === '__outro') {
+      draft.items.push({ key: customKey('item ' + Date.now().toString(36)), description: 'Novo item', action: 'trocar', interval_km: null, interval_months: 12, preliminary: false });
+      renderPlan();
+      const inputs = document.querySelectorAll<HTMLInputElement>('#plan-items [data-p="description"]');
+      inputs[inputs.length - 1]?.select();
+      return;
+    }
+    const cmn = COMMON.find(([k]) => k === sel.value);
+    if (cmn) draft.items.push({ key: cmn[0], description: cmn[1], action: cmn[2], interval_km: cmn[3], interval_months: cmn[4], preliminary: false });
+    renderPlan();
+  });
+  $('plan-del').addEventListener('click', async () => {
+    const v = data.vehicle;
+    if (!v) return;
+    if (!planDelArmed) { planDelArmed = true; return renderPlan(); }
+    await db.vehicles.put(stamp<Vehicle>({ ...v, plan_key: null, plan_custom: null }));
+    draft = null;
+    c.closeSheets();
+    toast('Plano removido. As idas à oficina continuam no histórico.');
+  });
+  $('plan-sheet').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const v = data.vehicle;
+    if (!v || !draft) return;
+    readPlan();
+    const items = draft.items.filter((i) => i.description.trim());
+    if (!items.length) return toast('Adicione pelo menos um item, ou use "Remover plano".');
+    // itens escritos pela pessoa ganham chave própria; os da lista mantêm a chave (a importação reconhece)
+    const seen = new Set<string>();
+    for (const it of items) {
+      if (it.key.startsWith('meu_item_')) it.key = customKey(it.description);
+      while (seen.has(it.key)) it.key += '_2';
+      seen.add(it.key);
+      it.preliminary = false;
+      delete it.severe_km;
+    }
+    await db.vehicles.put(stamp<Vehicle>({ ...v, plan_key: null, plan_custom: { base: draft.base, items } }));
+    draft = null;
+    c.closeSheets();
+    toast(draftNew ? 'Plano criado para o ' + v.name : 'Plano atualizado');
+  });
+
   /* ---------- formulário de manutenção ---------- */
   let editing: Service | null = null;
   let attach: { blob: Blob; name: string; type: string; pendingId: string | null } | null = null;
   let delArmed = false;
 
   function itemRow(it: { id: string; description: string; plan_item_key: string | null; parts_brl: number; labor_brl: number }) {
-    const plan = planByKey(data.vehicle?.plan_key);
+    const plan = data.vehicle ? planOf(data.vehicle) : undefined;
     const opts = '<option value="">Fora do plano</option>' + (plan?.items ?? []).map((p) => '<option value="' + esc(p.key) + '"' + (p.key === it.plan_item_key ? ' selected' : '') + '>' + esc(p.description) + '</option>').join('');
     const money = (n: number) => (n ? c.fmt(n, 2) : '');
     return (
@@ -341,7 +479,7 @@ export function initMaintenance(c: MaintCtx) {
   $('svc-items').addEventListener('input', (e) => {
     const el = e.target as HTMLInputElement;
     if (el.dataset.f === 'description') {
-      const plan = planByKey(data.vehicle?.plan_key);
+      const plan = data.vehicle ? planOf(data.vehicle) : undefined;
       const match = plan?.items.find((i) => i.description.toLowerCase() === el.value.trim().toLowerCase());
       const sel = el.closest('.item-row')!.querySelector<HTMLSelectElement>('[data-f="plan"]')!;
       if (match && !sel.value) sel.value = match.key;
