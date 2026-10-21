@@ -890,7 +890,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (!rec.best) {
       const r = bestWithoutPrice(all.rows);
       el.innerHTML = r
-        ? '<a class="rec-card" href="#/postos" data-home-base="' + kind + '"><span class="l">' + where + '</span><span class="t">' + esc(nm(r.s)) + '</span><span class="s">Sem preço recente nos postos daqui · melhor avaliado e mais perto (confiabilidade ' + fmt(r.rel.score, 1) + ')</span></a>'
+        ? '<div class="rec-card"><button type="button" class="rec-main" data-home-posto="' + r.s.c + '" data-base="' + kind + '"><span class="l">' + where + '</span><span class="t">' + esc(nm(r.s)) + '</span><span class="s">Sem preço recente nos postos daqui · melhor avaliado e mais perto (confiabilidade ' + fmt(r.rel.score, 1) + ')</span></button>' +
+          '<a class="more" href="#/postos" data-home-base="' + kind + '">Ver outros postos ' + ICON.chev + '</a></div>'
         : '';
       return;
     }
@@ -905,17 +906,24 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     }
     const badges = netBadges(b.s.c ? network().get(b.s.c) ?? null : null, 2);
     el.innerHTML =
-      '<a class="rec-card" href="#/postos" data-home-base="' + kind + '"><span class="l">' + where + '</span>' +
+      '<div class="rec-card"><button type="button" class="rec-main" data-home-posto="' + b.s.c + '" data-base="' + kind + '"><span class="l">' + where + '</span>' +
       '<span class="t">' + FUEL[b.fuel] + ' no ' + esc(nm(b.s)) + '</span>' +
       '<span class="s">' + brl(b.price.price) + '/l · ' + dist + (rec.bestOther ? ' · ' + brl(rec.bestOther.cost - b.cost) + ' a menos que ' + FUEL[rec.bestOther.fuel].toLowerCase() : '') + '</span>' +
       '<span class="rec-badges"><span class="nb on-dark ' + b.price.src + '">' + priceWho(b.price) + '</span>' + badges.replace(/class="nb/g, 'class="nb on-dark') + '<span class="nb on-dark">ANP ' + fmt(b.rel.anp, 1) + '</span></span>' +
-      (favTxt ? '<span class="f">' + esc(favTxt) + '</span>' : '') +
-      '<span class="more">Ver outros postos ' + ICON.chev + '</span></a>';
+      (favTxt ? '<span class="f">' + esc(favTxt) + '</span>' : '') + '</button>' +
+      '<a class="more" href="#/postos" data-home-base="' + kind + '">Ver outros postos ' + ICON.chev + '</a></div>';
   }
   $('home-rec').addEventListener('click', (e) => {
-    const a = (e.target as HTMLElement).closest<HTMLElement>('[data-home-base]');
-    if (a) base = a.dataset.homeBase as BaseKind;
-    kindChosen = true;
+    const el = e.target as HTMLElement;
+    // o posto recomendado abre a ficha; só "Ver outros postos" leva para a aba Postos
+    const p = el.closest<HTMLElement>('[data-home-posto]');
+    if (p) {
+      base = p.dataset.base as BaseKind;
+      kindChosen = true;
+      return openPosto(p.dataset.homePosto!);
+    }
+    const a = el.closest<HTMLElement>('[data-home-base]');
+    if (a) { base = a.dataset.homeBase as BaseKind; kindChosen = true; }
   });
 
   /* ---------- usados pelo abastecimento ---------- */
