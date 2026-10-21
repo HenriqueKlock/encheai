@@ -318,6 +318,28 @@ export function priceDate(r: StationRow): string | null {
   return r.opts.reduce<string | null>((d, o) => (!d || o.price.date > d ? o.price.date : d), null);
 }
 
+export type MapMode = 'preco' | 'avaliacao';
+
+/**
+ * Principais opções para o mapa da aba Postos.
+ * Preço: com preço, os recentes primeiro (os de confiabilidade baixa no fim), do mais em conta ao mais caro.
+ * Avaliação: pela confiabilidade (ANP, Google e rede) e, no empate, o mais perto.
+ * O posto sugerido sempre entra.
+ */
+export function mapPicks(rows: StationRow[], mode: MapMode, bestId: string | null | undefined, n = 12): StationRow[] {
+  let ranked: StationRow[];
+  if (mode === 'preco') {
+    const group = (r: StationRow) => (r.best!.stale ? 2 : r.rel.level === 'evitar' ? 1 : 0);
+    ranked = rows.filter((r) => r.best).sort((a, b) => group(a) - group(b) || a.best!.cost - b.best!.cost || a.distKm - b.distKm);
+  } else {
+    ranked = rows.slice().sort((a, b) => b.rel.score - a.rel.score || a.distKm - b.distKm);
+  }
+  const out = ranked.slice(0, n);
+  const best = bestId ? rows.find((r) => r.s.c === bestId) : undefined;
+  if (best && !out.includes(best)) out.push(best);
+  return out;
+}
+
 /**
  * Ordem da lista: primeiro os preços mais recentes (e, no mesmo dia, o mais em conta);
  * depois os de confiabilidade baixa e os de preço antigo; por fim os sem preço, pela nota e pela distância.

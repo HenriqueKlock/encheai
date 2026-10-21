@@ -512,7 +512,8 @@ a.next-card { text-decoration: none; }
 .fchip { flex: none; display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid var(--field); background: var(--surface); font-size: 13px; font-weight: 500; color: var(--ink); }
 .fchip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 600; }
 .fchip .dot { margin-right: 6px; }
-.p-map { height: 210px; border-radius: 18px; overflow: hidden; background: var(--sunken); border: 1px solid var(--line); z-index: 0; }
+.p-map-wrap { position: relative; display: flex; flex-direction: column; gap: 6px; }
+.p-map { height: 240px; border-radius: 18px; overflow: hidden; background: var(--sunken); border: 1px solid var(--line); z-index: 0; }
 .p-map .leaflet-control-attribution { font-size: 10px; }
 @media (prefers-color-scheme: dark) { .p-map .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); } }
 .pin { background: none; border: 0; }
@@ -616,3 +617,19 @@ a.next-card { text-decoration: none; }
 .rec-actions .btn svg { width: 18px; height: 18px; flex: none; }
 .hrow .row .end .a { font-size: 14px; white-space: nowrap; }
 .hrow .row { gap: 10px; }
+
+/* mapa da aba Postos: principais opções por preço ou avaliação */
+.map-mode { position: absolute; top: 8px; left: 8px; z-index: 500; }
+.map-mode button { box-shadow: 0 1px 3px rgba(0, 0, 0, .18); }
+.map-legend { margin: 0 4px; font-size: 12px; color: var(--muted); }
+.pin span { position: relative; }
+.pin.old span { color: #8A93A0; border-style: dashed; }
+.pin.old span::before { background: #B8BFC9; }
+.pin.nota span::before { display: none; }
+.pin.nv-ok span { color: #166534; border-color: #A7D7B5; }
+.pin.nv-atencao span { color: #92400E; border-color: #F3D19C; }
+.pin.nv-evitar span { color: #B42318; border-color: #F4C7C3; }
+.pin.best span { font-size: 14px; padding: 5px 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
+.pin.best.nota span { color: #FFFFFF; border-color: #0E1116; }
+.pin.best.old span { color: #FFFFFF; border-style: solid; }
+.pin.best em { position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -3px); padding: 1px 6px; border-radius: 6px; background: #1D4ED8; color: #FFFFFF; font: 700 10px var(--font); font-style: normal; letter-spacing: .2px; white-space: nowrap; }

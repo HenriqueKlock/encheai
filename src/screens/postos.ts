@@ -11,7 +11,7 @@ import { currentSession, googlePhoto, googlePlaces, setPlace, type Places } from
 import { fetchNetwork, network } from '../rede';
 import { getMeta, setMeta, stamp, db, type FuelLog } from '../db';
 import { S, carInfo, carLogs, carIntervals, subscribe } from '../store';
-import { stationUsage } from '../postos';
+import { mapPicks, stationUsage, type MapMode } from '../postos';
 import { $, ago, brl, closeSheets, dm, esc, fmt, openSheet, onSheetClose, pl, todayISO, toast } from '../ui';
 import { currentRoute, go, onShow } from '../router';
 import { addressSearch } from './busca-endereco';
@@ -432,14 +432,14 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     $('p-where').innerHTML = '<span class="w">' + PIN + '<span>' + esc(rs.where) + '</span></span>' + right;
     const body = $('p-body');
     if (!file) {
-      $('p-map').hidden = true;
+      $('p-map-wrap').hidden = true;
       body.innerHTML = loadFailed
         ? '<div class="card center"><p class="hint">Não consegui carregar a lista de postos. Na primeira vez é preciso internet; depois ela fica no celular.</p><button type="button" class="btn" data-act="retry">Tentar de novo</button></div>'
         : '<div class="empty">Carregando postos…</div>';
       return;
     }
     if ('need' in rs) {
-      $('p-map').hidden = true;
+      $('p-map-wrap').hidden = true;
       body.innerHTML = needCard(rs.need) + compareCard(base) + sourcesNote();
       return;
     }
@@ -470,7 +470,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       html += '<div class="list-card">' + sorted.slice(0, limit).map((r) => stationRow(r, rs.base, r.s.c === rec.best?.s.c)).join('') + (sorted.length > limit ? '<button type="button" class="list-more" data-act="all">Mostrar todos (' + sorted.length + ')</button>' : '') + '</div>';
     }
     body.innerHTML = html + sourcesNote();
-    drawMap(rs, sorted.slice(0, limit), rec);
+    drawMap(rs, rows, rec);
   }
 
   function sourcesNote() {
@@ -489,9 +489,16 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (!L) [L] = await Promise.all([import('leaflet'), import('leaflet/dist/leaflet.css')]);
     return L;
   }
-  async function drawMap(rs: Extract<Resolved, { base: Base }>, rows: StationRow[], rec: Recommendation) {
+  let mapMode: MapMode = 'preco';
+  try { if (localStorage.getItem('postos_mapa') === 'avaliacao') mapMode = 'avaliacao'; } catch { /* sem acesso */ }
+  let lastMap: { rs: Extract<Resolved, { base: Base }>; rows: StationRow[]; rec: Recommendation } | null = null;
+
+  async function drawMap(rs: Extract<Resolved, { base: Base }>, rows: StationRow[], rec: Recommendation, refit = true) {
+    lastMap = { rs, rows, rec };
+    const wrap = $('p-map-wrap');
+    wrap.hidden = false;
     const el = $('p-map');
-    el.hidden = false;
+    document.querySelectorAll<HTMLElement>('#p-map-mode [data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mapMode)));
     const Lf = await loadLeaflet();
     if (currentRoute().view !== 'postos') return;
     if (!pmap) {
@@ -499,6 +506,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       pmap.attributionControl.setPrefix(false);
       Lf.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(pmap);
       layer = Lf.layerGroup().addTo(pmap);
+      // ao aproximar ou afastar, refaz as etiquetas sem mexer no enquadramento
+      pmap.on('zoomend', () => lastMap && drawMap(lastMap.rs, lastMap.rows, lastMap.rec, false));
     }
     pmap.invalidateSize();
     layer!.clearLayers();
@@ -511,22 +520,55 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       Lf.circleMarker([rs.center.lat, rs.center.lon], { radius: 7, color: '#FFFFFF', weight: 3, fillColor: '#1D4ED8', fillOpacity: 1 }).addTo(layer!);
       pts.push([rs.center.lat, rs.center.lon]);
     }
-    // no mapa só os postos com preço recente (o melhor sempre aparece)
-    for (const r of rows) {
-      const best = r.s.c === rec.best?.s.c;
-      if (!best && !(r.best && !r.best.stale)) continue;
-      const price = fmt(r.best!.price.price, 2);
-      const icon = Lf.divIcon({ className: 'pin ' + (r.best!.fuel === 'etanol' ? 'eth' : 'gas') + (best ? ' best' : '') + (r.rel.level === 'evitar' ? ' bad' : ''), html: '<span>' + price + '</span>', iconSize: undefined as any, iconAnchor: [20, 14] });
-      Lf.marker([r.s.la, r.s.lo], { icon, title: nm(r.s), keyboard: false }).on('click', () => openPosto(r.s.c)).addTo(layer!);
-      pts.push([r.s.la, r.s.lo]);
-    }
-    const key = base + '|' + radius + '|' + rows.length;
-    if (key !== mapKey && pts.length) {
+    // principais opções ao redor; a sugerida fica em destaque, por cima das outras
+    const bestId = rec.best?.s.c;
+    const picks = mapPicks(rows, mapMode, bestId);
+    for (const r of picks) pts.push([r.s.la, r.s.lo]);
+    const key = base + '|' + radius + '|' + rows.length + '|' + mapMode;
+    if (refit && key !== mapKey && pts.length) {
       mapKey = key;
       if (pts.length === 1) pmap.setView(pts[0], 14);
-      else pmap.fitBounds(Lf.latLngBounds(pts).pad(0.08));
+      else pmap.fitBounds(Lf.latLngBounds(pts).pad(0.1));
     }
+    // sem etiquetas encavaladas: a sugerida primeiro, depois na ordem da lista; aproximar mostra as escondidas
+    const placed: { x: number; y: number }[] = [];
+    let hidden = 0, staleShown = false;
+    const order = picks.slice().sort((a, b) => Number(b.s.c === bestId) - Number(a.s.c === bestId));
+    for (const r of order) {
+      const pt = pmap.latLngToContainerPoint([r.s.la, r.s.lo]);
+      if (placed.some((q) => Math.abs(q.x - pt.x) < 58 && Math.abs(q.y - pt.y) < 28)) { hidden++; continue; }
+      placed.push({ x: pt.x, y: pt.y });
+      if (mapMode === 'preco' && r.s.c !== bestId && r.best?.stale) staleShown = true;
+      const best = r.s.c === bestId;
+      const lvl = r.rel.level;
+      let cls = 'pin';
+      let label: string;
+      if (mapMode === 'preco') {
+        const o = best ? rec.best! : r.best!;
+        cls += ' ' + (o.fuel === 'etanol' ? 'eth' : 'gas') + (o.stale ? ' old' : '') + (lvl === 'evitar' ? ' bad' : '');
+        label = fmt(o.price.price, 2);
+      } else {
+        cls += ' nota nv-' + lvl;
+        label = '★ ' + fmt(r.rel.score, 1);
+      }
+      if (best) cls += ' best';
+      const icon = Lf.divIcon({ className: cls, html: '<span>' + (best ? '<em>sugerido</em>' : '') + label + '</span>', iconSize: undefined as any, iconAnchor: [20, 14] });
+      Lf.marker([r.s.la, r.s.lo], { icon, title: nm(r.s), keyboard: false, zIndexOffset: best ? 1000 : 0 }).on('click', () => openPosto(r.s.c)).addTo(layer!);
+    }
+    const stale = staleShown;
+    $('p-map-legend').textContent = !picks.length
+      ? mapMode === 'preco' ? 'Nenhum posto daqui tem preço. Veja por avaliação.' : ''
+      : (mapMode === 'preco'
+        ? pl(picks.length, 'opção mais em conta', 'opções mais em conta') + (stale ? ' · em cinza, preço com mais de 30 dias' : '')
+        : pl(picks.length, 'posto mais confiável', 'postos mais confiáveis') + ' · ANP, Google e rede') + (hidden ? ' · aproxime para ver ' + (hidden === 1 ? 'mais 1' : 'mais ' + hidden) : '') + ' · toque para abrir';
   }
+  $('p-map-mode').addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-mode]');
+    if (!b || b.dataset.mode === mapMode) return;
+    mapMode = b.dataset.mode as MapMode;
+    try { localStorage.setItem('postos_mapa', mapMode); } catch { /* sem acesso */ }
+    if (lastMap) drawMap(lastMap.rs, lastMap.rows, lastMap.rec);
+  });
 
   $('p-base').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-base]');
