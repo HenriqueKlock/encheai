@@ -91,16 +91,17 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
         const i = byStart.get(f.id);
         const metric = i ? fmt(i.kml, 2) + ' km/l' : !f.full_tank ? 'parcial' : f === firstFull ? 'primeiro tanque' : '–';
         const st = f.station ? f.station.split(' · ')[0] : null;
-        const rated = !!S.ratings[f.id];
-        const canRate = !!f.station_id && !rated && S.prefs.contribute && Math.round((Date.parse(today) - Date.parse(f.date)) / 864e5) <= 7;
-        const sub = [km(f.odometer_km) + ' km', brl(f.price_per_l || f.total_brl / f.liters) + '/l', rated ? 'avaliado' : ''].filter(Boolean).join(' · ');
+        const rt = S.ratings[f.id];
+        const canRate = !!f.station_id && !rt && S.prefs.contribute && Math.round((Date.parse(today) - Date.parse(f.date)) / 864e5) <= 7;
+        const sub = [km(f.odometer_km) + ' km', brl(f.price_per_l || f.total_brl / f.liters) + '/l'].join(' · ');
         entries.push({
           date: f.date, odo: f.odometer_km, total: f.total_brl, kind: 'f',
           html:
             '<div class="hrow"><button type="button" class="row" data-fill="' + esc(f.id) + '"><span class="day"><b>' + f.date.slice(8, 10) + '</b><span>' + monthName(monthKey(f.date)).slice(0, 3) + '</span></span>' +
             '<span class="mid"><span class="a' + (st ? '' : ' muted') + '">' + (st ? esc(st) : 'Sem posto') + '</span><span class="b"><i class="dot ' + (f.fuel === 'etanol' ? 'eth' : 'gas') + '"></i>' + FUEL_LABEL[f.fuel] + ' ' + fmt(f.liters, 1) + ' l · ' + brl(f.total_brl) + '</span><span class="b">' + esc(sub) + '</span></span>' +
             '<span class="end"><span class="a' + (i && i.kml ? '' : ' muted') + '">' + metric + '</span></span></button>' +
-            (canRate ? '<button type="button" class="rate-chip" data-rate-fill="' + esc(f.id) + '">Avaliar o posto</button>' : '') + '</div>',
+            (rt ? '<button type="button" class="rate-chip done" data-rate-fill="' + esc(f.id) + '">' + ICON.check + '<span>' + esc(ratingSummary(rt)) + '</span></button>'
+              : canRate ? '<button type="button" class="rate-chip" data-rate-fill="' + esc(f.id) + '">Avaliar o posto</button>' : '') + '</div>',
         });
       }
     }
@@ -268,4 +269,14 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
   onShow('indicadores', () => render());
   onShow('etanol', () => render());
   return { render, dm };
+}
+
+/** "bomba ok · banheiro ruim": resumo da avaliação no histórico. */
+function ratingSummary(r: { bomba: 1 | -1 | null; atendimento: 1 | -1 | null; banheiro: 1 | -1 | null }) {
+  const parts = [
+    r.bomba != null ? 'bomba ' + (r.bomba > 0 ? 'ok' : 'errada') : '',
+    r.atendimento != null ? 'atendimento ' + (r.atendimento > 0 ? 'bom' : 'ruim') : '',
+    r.banheiro != null ? 'banheiro ' + (r.banheiro > 0 ? 'bom' : 'ruim') : '',
+  ].filter(Boolean);
+  return parts.join(' · ');
 }

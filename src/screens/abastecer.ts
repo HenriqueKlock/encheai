@@ -4,7 +4,7 @@ import { db, softDelete, stamp, uuid, type FuelLog, type FuelType } from '../db'
 import { aggregate, intervals, parseIntLoose, parseNum } from '../calc';
 import { gps } from '../lugares';
 import { ageDays, type Fuel, type PricePoint, type Station } from '../postos';
-import { currentSession, saveRating, type Vote } from '../sync';
+import { currentSession, deleteRating, saveRating, type Vote } from '../sync';
 import { invalidateNetwork } from '../rede';
 import { S, carInfo, carLogs, current } from '../store';
 import { $, ago, brl, closeSheets, dm, esc, fmt, km, openSheet, pl, todayISO, toast } from '../ui';
@@ -326,6 +326,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
       return;
     }
     await softDelete(db.fuel_logs, editing.id);
+    await deleteRating(editing.id); // a avaliação vai junto
     closeSheets();
     toast('Abastecimento excluído');
   });
@@ -369,11 +370,13 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
       note: val('f-note').trim().slice(0, 140) || null,
     });
     const wasEdit = !!editing;
+    // mudou de posto: a avaliação era do posto anterior
+    if (editing && editing.station_id !== row.station_id) await deleteRating(editing.id);
     await db.fuel_logs.put(row);
     if (st) invalidateNetwork(st.c);
     const askRating = !wasEdit && !!st && S.prefs.contribute && !!(await currentSession()) && ageDays(date, todayISO()) <= 7;
     if (askRating) {
-      openRating(row.id);
+      openRating(row.id, true);
       return;
     }
     closeSheets(() => !wasEdit && go('inicio'));
@@ -381,40 +384,58 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
   });
 
   /* ---------- avaliação em um toque ---------- */
-  let rating: { fill: FuelLog; bomba: Vote; atendimento: Vote; banheiro: Vote } | null = null;
-  function openRating(fillId: string) {
-    const fill = S.logs.find((f) => f.id === fillId) ?? null;
-    void fill;
+  let rating: { fill: FuelLog; bomba: Vote; atendimento: Vote; banheiro: Vote; justSaved: boolean; existed: boolean; locked: boolean } | null = null;
+  /** Avaliação do posto de um abastecimento: logo depois de salvar, ou depois, pelo histórico (ver, mudar ou apagar). */
+  function openRating(fillId: string, justSaved = false) {
     // a linha acabou de ser gravada: o estado em memória pode ainda não ter chegado
     db.fuel_logs.get(fillId).then((f) => {
       if (!f || !f.station_id) return;
       const prev = S.ratings[fillId];
-      rating = { fill: f, bomba: prev?.bomba ?? null, atendimento: prev?.atendimento ?? null, banheiro: prev?.banheiro ?? null };
+      rating = {
+        fill: f, bomba: prev?.bomba ?? null, atendimento: prev?.atendimento ?? null, banheiro: prev?.banheiro ?? null,
+        justSaved, existed: !!prev, locked: ageDays(f.date, todayISO()) > 7,
+      };
       renderRating();
       openSheet('rate-sheet');
     });
   }
   function renderRating() {
     if (!rating) return;
-    const f = rating.fill;
+    const r = rating;
+    const f = r.fill;
     const s = f.station_id ? postos.byId(f.station_id) : null;
     const name = s ? postos.nameOf(s) : (f.station ?? 'o posto').split(' · ')[0];
     const q = (key: 'bomba' | 'atendimento' | 'banheiro', label: string, opts: [Vote, string][]) =>
       '<div class="rate-q" role="radiogroup" aria-label="' + esc(label) + '"><span class="b15">' + label + '</span><div class="rate-opts">' +
-      opts.map(([v, t]) => '<button type="button" role="radio" data-k="' + key + '" data-v="' + (v ?? 0) + '" aria-checked="' + (rating![key] === v && v !== null ? 'true' : 'false') + '">' + t + '</button>').join('') + '</div></div>';
-    const n = (['bomba', 'atendimento', 'banheiro'] as const).filter((k) => rating![k] !== null).length;
+      opts.map(([v, t]) => '<button type="button" role="radio" data-k="' + key + '" data-v="' + (v ?? 0) + '" aria-checked="' + (r[key] === v && v !== null ? 'true' : 'false') + '"' + (r.locked ? ' disabled' : '') + '>' + t + '</button>').join('') + '</div></div>';
+    const n = (['bomba', 'atendimento', 'banheiro'] as const).filter((k) => r[k] !== null).length;
+    const what = fmt(f.liters, 1) + ' l de ' + (f.fuel === 'etanol' ? 'etanol' : f.fuel) + ' · ' + brl(f.total_brl) + ' · ' + esc(name);
+    const head = r.justSaved
+      ? '<div class="saved-row"><span class="ok-ic">' + ICON.check + '</span><span class="mid"><span class="a">Abastecimento salvo</span><span class="b">' + what + '</span></span></div>' +
+        '<div class="rate-head"><h2 id="rate-title">Como foi no posto?</h2><span class="hint">Opcional. Entra na média do posto sem o seu nome.</span></div>'
+      : '<div class="rate-head"><h2 id="rate-title">' + (r.existed ? 'Sua avaliação' : 'Como foi no posto?') + '</h2><span class="hint">' + dm(f.date) + ' · ' + what + '</span></div>';
+    const note = r.locked
+      ? '<p class="hint">Já passaram 7 dias desse abastecimento: dá para apagar a avaliação, mas não mudar.</p>'
+      : r.existed ? '<p class="hint">Entra na média do posto sem o seu nome. Mude as respostas ou apague.</p>' : '';
+    const send = '<button type="button" class="btn primary" data-rate="send"' + (n ? '' : ' disabled') + '>' + (n ? (r.existed ? 'Salvar' : 'Enviar') : 'Escolha uma resposta') + '</button>';
+    const btns = r.justSaved
+      ? '<button type="button" class="btn" data-rate="skip">Pular</button>' + send
+      : r.locked
+        ? '<button type="button" class="btn" data-rate="skip">Fechar</button><button type="button" class="btn danger" data-rate="del">Apagar avaliação</button>'
+        : r.existed
+          ? '<button type="button" class="btn danger" data-rate="del">Apagar</button>' + send
+          : '<button type="button" class="btn" data-rate="skip">Cancelar</button>' + send;
     $('rate-body').innerHTML =
-      '<div class="saved-row"><span class="ok-ic">' + ICON.check + '</span><span class="mid"><span class="a">Abastecimento salvo</span><span class="b">' + fmt(f.liters, 1) + ' l de ' + (f.fuel === 'etanol' ? 'etanol' : f.fuel) + ' · ' + brl(f.total_brl) + ' · ' + esc(name) + '</span></span></div>' +
-      '<div class="rate-head"><h2 id="rate-title">Como foi no posto?</h2><span class="hint">Opcional. Entra na média do posto sem o seu nome.</span></div>' +
+      head +
       q('bomba', 'A bomba marcou certo?', [[1, 'Sim'], [-1, 'Não'], [null, 'Não sei']]) +
       q('atendimento', 'Atendimento', [[1, 'Bom'], [-1, 'Ruim'], [null, 'Não sei']]) +
       q('banheiro', 'Banheiro', [[1, 'Bom'], [-1, 'Ruim'], [null, 'Não usei']]) +
-      '<div class="btn-row"><button type="button" class="btn" data-rate="skip">Pular</button><button type="button" class="btn primary" data-rate="send"' + (n ? '' : ' disabled') + '>' + (n ? 'Enviar' : 'Escolha uma resposta') + '</button></div>';
+      note + '<div class="btn-row">' + btns + '</div>';
   }
   $('rate-body').addEventListener('click', async (e) => {
     const el = e.target as HTMLElement;
     const b = el.closest<HTMLElement>('[data-k]');
-    if (b && rating) {
+    if (b && rating && !rating.locked) {
       const k = b.dataset.k as 'bomba';
       const v = Number(b.dataset.v) as 1 | -1 | 0;
       rating[k] = v === 0 ? null : rating[k] === v ? null : v;
@@ -422,12 +443,16 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     }
     const act = el.closest<HTMLElement>('[data-rate]')?.dataset.rate;
     if (!act || !rating) return;
+    const after = rating.justSaved;
     if (act === 'send') {
       await saveRating({ fuel_log_id: rating.fill.id, station_id: rating.fill.station_id!, bomba: rating.bomba, atendimento: rating.atendimento, banheiro: rating.banheiro });
-      toast('Obrigado! Sua avaliação entra na média do posto.');
-    } else toast('Abastecimento salvo');
+      toast(rating.existed ? 'Avaliação atualizada' : 'Obrigado! Sua avaliação entra na média do posto.');
+    } else if (act === 'del') {
+      await deleteRating(rating.fill.id);
+      toast('Avaliação apagada');
+    } else if (after) toast('Abastecimento salvo');
     rating = null;
-    closeSheets(() => go('inicio'));
+    closeSheets(() => after && go('inicio'));
   });
 
   return { open, openAt: (s: Station, fuel: Fuel | null, price: PricePoint | null) => open(null, { s, fuel, price }), openRating };

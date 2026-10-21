@@ -60,7 +60,8 @@ export function startStore(onError: (e: unknown) => void) {
       files,
       prefs,
       places,
-      ratings,
+      // avaliações apagadas, ou de abastecimento excluído, não aparecem
+      ratings: Object.fromEntries(Object.entries(ratings).filter(([id, r]) => !r.deleted && logs.some((f) => f.id === id && !f.deleted_at))),
     } as State;
   }).subscribe({
     next: (s) => {

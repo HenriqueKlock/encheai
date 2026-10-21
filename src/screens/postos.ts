@@ -489,12 +489,15 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (!L) [L] = await Promise.all([import('leaflet'), import('leaflet/dist/leaflet.css')]);
     return L;
   }
-  let mapMode: MapMode = 'preco';
-  try { if (localStorage.getItem('postos_mapa') === 'avaliacao') mapMode = 'avaliacao'; } catch { /* sem acesso */ }
+  // Sem escolha da pessoa, o mapa abre em Avaliação; só abre em Preço quando há preços recentes para comparar
+  let mapChoice: MapMode | null = null;
+  let mapMode: MapMode = 'avaliacao';
+  const autoMode = (rows: StationRow[]): MapMode => (rows.filter((r) => r.best && !r.best.stale).length >= 3 ? 'preco' : 'avaliacao');
   let lastMap: { rs: Extract<Resolved, { base: Base }>; rows: StationRow[]; rec: Recommendation } | null = null;
 
   async function drawMap(rs: Extract<Resolved, { base: Base }>, rows: StationRow[], rec: Recommendation, refit = true) {
     lastMap = { rs, rows, rec };
+    mapMode = mapChoice ?? autoMode(rows);
     const wrap = $('p-map-wrap');
     wrap.hidden = false;
     const el = $('p-map');
@@ -565,8 +568,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   $('p-map-mode').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-mode]');
     if (!b || b.dataset.mode === mapMode) return;
-    mapMode = b.dataset.mode as MapMode;
-    try { localStorage.setItem('postos_mapa', mapMode); } catch { /* sem acesso */ }
+    mapChoice = b.dataset.mode as MapMode; // vale enquanto o app está aberto
     if (lastMap) drawMap(lastMap.rs, lastMap.rows, lastMap.rec);
   });
 

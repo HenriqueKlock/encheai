@@ -291,7 +291,7 @@ async function syncSettings() {
 /* ---------- avaliações em um toque ---------- */
 
 export type Vote = 1 | -1 | null;
-export interface RatingRow { fuel_log_id: string; station_id: string; bomba: Vote; atendimento: Vote; banheiro: Vote; dirty: boolean }
+export interface RatingRow { fuel_log_id: string; station_id: string; bomba: Vote; atendimento: Vote; banheiro: Vote; dirty: boolean; /** apagada aqui; some do servidor na próxima sincronização */ deleted?: boolean }
 const RATINGS_KEY = 'ratings';
 
 export async function getRatings(): Promise<Record<string, RatingRow>> {
@@ -299,17 +299,35 @@ export async function getRatings(): Promise<Record<string, RatingRow>> {
 }
 
 /** Guarda a avaliação no aparelho; sobe na próxima sincronização. */
-export async function saveRating(r: Omit<RatingRow, 'dirty'>) {
+export async function saveRating(r: Omit<RatingRow, 'dirty' | 'deleted'>) {
   const all = await getRatings();
   all[r.fuel_log_id] = { ...r, dirty: true };
   await setMeta(RATINGS_KEY, all);
   scheduleSync(500);
 }
 
+/** Apaga a avaliação de um abastecimento (também quando o abastecimento é excluído ou muda de posto). */
+export async function deleteRating(fuelLogId: string) {
+  const all = await getRatings();
+  const r = all[fuelLogId];
+  if (!r) return;
+  all[fuelLogId] = { ...r, deleted: true, dirty: true };
+  await setMeta(RATINGS_KEY, all);
+  scheduleSync(500);
+}
+
 async function syncRatings() {
   const all = await getRatings();
+  const removed = new Set<string>();
   for (const r of Object.values(all).filter((x) => x.dirty)) {
-    const { dirty: _d, ...row } = r;
+    if (r.deleted) {
+      const { error } = await supabase.from('ratings').delete().eq('fuel_log_id', r.fuel_log_id);
+      if (error) throw error;
+      delete all[r.fuel_log_id];
+      removed.add(r.fuel_log_id);
+      continue;
+    }
+    const { dirty: _d, deleted: _x, ...row } = r;
     const { error } = await supabase.from('ratings').upsert(row, { onConflict: 'fuel_log_id' });
     if (error) {
       // abastecimento ainda não subiu: tenta de novo na próxima; fora do prazo ou inválido: descarta
@@ -322,9 +340,22 @@ async function syncRatings() {
     }
     all[r.fuel_log_id] = { ...r, dirty: false };
   }
-  const { data, error } = await supabase.from('ratings').select('fuel_log_id, station_id, bomba, atendimento, banheiro');
+  const { data: got, error } = await supabase.from('ratings').select('fuel_log_id, station_id, bomba, atendimento, banheiro');
   if (error) throw error;
+  // avaliação de abastecimento excluído ou que mudou de posto: apaga do servidor também
+  const data: typeof got = [];
+  for (const r of got ?? []) {
+    const f = await db.fuel_logs.get(r.fuel_log_id);
+    if (f && (f.deleted_at || f.station_id !== r.station_id)) {
+      const { error: e2 } = await supabase.from('ratings').delete().eq('fuel_log_id', r.fuel_log_id);
+      if (e2) throw e2;
+      removed.add(r.fuel_log_id);
+      continue;
+    }
+    data.push(r);
+  }
   const cur = await getRatings();
+  for (const k of removed) if (cur[k]?.deleted || !cur[k]?.dirty) delete cur[k]; // apagada e já removida do servidor
   for (const k of Object.keys(all)) if (cur[k]) cur[k].dirty = all[k].dirty;
   for (const k of Object.keys(cur)) if (!all[k] && !cur[k].dirty) delete cur[k];
   for (const r of data ?? []) if (!cur[r.fuel_log_id]?.dirty) cur[r.fuel_log_id] = { ...(r as Omit<RatingRow, 'dirty'>), dirty: false };
