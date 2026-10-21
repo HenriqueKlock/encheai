@@ -6,7 +6,7 @@ import { DEFAULT_HOME, isIndicatorId, type IndicatorId } from './indicators';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   // Login pelo link do e-mail: o Supabase devolve a sessão no fragmento (#access_token=…) da URL do app
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit', storageKey: 'caderneta2-auth' },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit', storageKey: 'encheai-auth' },
 });
 
 /** Ordem pai → filho: o banco recusa um filho cujo pai ainda não subiu. */

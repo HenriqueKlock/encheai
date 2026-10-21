@@ -1,4 +1,4 @@
--- Caderneta do Carro 2.0: base pessoal (carros, abastecimentos, manutenção, preferências, locais).
+-- Enche Aí (antes Caderneta do Carro 2.0): base pessoal (carros, abastecimentos, manutenção, preferências, locais).
 -- Regras: cada linha pertence a um usuário (user_id = auth.uid()); o id é gerado no celular;
 -- vence a alteração mais recente (updated_at do cliente); server_updated_at é o relógio do servidor usado no pull.
 -- Tudo aponta para auth.users com ON DELETE CASCADE: excluir a conta apaga tudo.

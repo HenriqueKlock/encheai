@@ -1,6 +1,7 @@
 import Dexie from 'dexie';
 import { db, type FuelLog, type Service, type ServiceItem, type Vehicle } from './db';
 
+// Formato do arquivo de backup herdado da Caderneta do Carro (mantido para os dois apps lerem os mesmos arquivos)
 export const BACKUP_APP = 'caderneta-carro';
 export const BACKUP_VERSION = 1;
 
@@ -41,7 +42,7 @@ export interface ImportResult {
 export async function importBackup(raw: unknown): Promise<ImportResult> {
   const b = raw as Partial<Backup>;
   if (!b || b.app !== BACKUP_APP || typeof b.version !== 'number') {
-    throw new Error('Este arquivo não é um backup da Caderneta do Carro.');
+    throw new Error('Este arquivo não é um backup do Enche Aí (nem da Caderneta do Carro).');
   }
   if (b.version > BACKUP_VERSION) {
     throw new Error('Backup criado por uma versão mais nova do app. Atualize o app e tente de novo.');

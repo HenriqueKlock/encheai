@@ -27,7 +27,7 @@ export function showWelcome(opts: { legacyCount: number | null; onClose: () => v
   el.hidden = false;
   el.innerHTML =
     '<div class="welcome-in">' +
-    '<div class="brand"><span class="logo"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M3 20h12M14 9h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3M7 7h4"/></svg></span><span>Caderneta do Carro</span></div>' +
+    '<div class="brand"><span class="logo"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M3 20h12M14 9h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3M7 7h4"/></svg></span><span>Enche Aí</span></div>' +
     '<h1>Saiba em qual posto vale abastecer, medido por quem abastece lá.</h1>' +
     '<ul class="values">' +
     '<li><span class="vi">' + BOOK + '</span><span><b>Seu caderno do carro</b><span>Consumo, gastos e manutenção. Funciona sem internet.</span></span></li>' +

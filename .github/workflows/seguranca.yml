@@ -30,5 +30,5 @@ jobs:
           git rm -rfq . && git clean -fdq
           cp /tmp/rel/relatorio.txt .
           git add relatorio.txt
-          git -c user.name="caderneta-bot" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "Relatório de segurança $(date -u +%FT%TZ)"
+          git -c user.name="encheai-bot" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "Relatório de segurança $(date -u +%FT%TZ)"
           git push -f origin HEAD:seguranca

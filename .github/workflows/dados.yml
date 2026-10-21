@@ -54,7 +54,7 @@ jobs:
         run: |
           git add -A
           if git diff --cached --quiet; then echo "nada mudou"; exit 0; fi
-          git -c user.name="caderneta-bot" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "Dados ANP $(date -u +%F)"
+          git -c user.name="encheai-bot" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "Dados ANP $(date -u +%F)"
           git push origin dados
       - name: Publicar no app
         if: ${{ (inputs.modo || 'completo') == 'completo' }}

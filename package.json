@@ -1,7 +1,7 @@
 {
-  "name": "caderneta-carro",
+  "name": "encheai",
   "version": "1.0.0",
-  "description": "Caderneta do Carro: abastecimentos, consumo e manutenção, offline-first",
+  "description": "Enche Aí: em qual posto vale abastecer, medido por quem abastece lá",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

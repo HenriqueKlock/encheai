@@ -109,7 +109,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     const blob = new Blob([JSON.stringify({ ...data, places: S.places, ratings: S.ratings }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'caderneta-meus-dados-' + todayISO() + '.json';
+    a.download = 'encheai-meus-dados-' + todayISO() + '.json';
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);

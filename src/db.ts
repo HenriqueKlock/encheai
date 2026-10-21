@@ -89,7 +89,7 @@ export class AppDB extends Dexie {
   pending_files!: Table<PendingFile, string>;
 
   constructor() {
-    super('caderneta-2');
+    super('encheai');
     this.version(1).stores({
       vehicles: 'id, _dirty, updated_at',
       fuel_logs: 'id, vehicle_id, [vehicle_id+odometer_km], _dirty, updated_at',
