@@ -24,7 +24,7 @@ export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel
       $('home-empty').innerHTML =
         '<div class="card-head"><span>Comece por aqui</span></div>' +
         (leg ? '<p class="hint">Encontramos ' + pl(leg.fuel_logs, 'abastecimento', 'abastecimentos') + ' do app anterior neste celular.</p><button type="button" class="btn primary" data-act="legacy">Trazer meus dados do app anterior</button>' : '<p class="hint">Cadastre seu carro. Depois toque em Abastecer a cada ida ao posto.</p>') +
-        '<div class="btn-row"><button type="button" class="btn' + (leg ? '' : ' primary') + '" data-act="cars">Cadastrar carro</button><button type="button" class="btn" data-act="import">Importar backup</button></div>';
+        '<div class="btn-row"><button type="button" class="btn' + (leg ? '' : ' primary') + '" data-act="cars">Cadastrar carro</button><a class="btn" href="#/importar">Trazer histórico</a></div>';
     }
     ['home-consumo', 'home-inds-head', 'home-inds', 'home-next'].forEach((id) => ($(id).hidden = empty));
     opts.renderRec();

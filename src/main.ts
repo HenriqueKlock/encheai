@@ -17,6 +17,7 @@ import { initAbastecer } from './screens/abastecer';
 import { initCarros } from './screens/carros';
 import { initCarro } from './screens/carro';
 import { initLocais } from './screens/locais';
+import { initImportar } from './screens/importar';
 import { initInicio } from './screens/inicio';
 import { initPerfil } from './screens/perfil';
 import { applyConsentChoice, hideWelcome, shouldWelcome, showWelcome } from './screens/boasvindas';
@@ -49,6 +50,7 @@ const postos = initPostos({ fillAt: (s, fuel, price) => fill.openAt(s, fuel, pri
 const fill = initAbastecer(postos, () => carros.openVehicle(null));
 initCarro(fill);
 initLocais();
+const importar = initImportar();
 const perfil = initPerfil({ status: () => syncStatus, statusText: () => syncText()[1] });
 initInicio({ signedIn: () => signedIn, legacy: () => (legacyCount ? { fuel_logs: legacyCount } : null), renderRec: postos.renderHome });
 
@@ -71,6 +73,8 @@ $<HTMLInputElement>('imp-file').addEventListener('change', async (e) => {
   const file = input.files?.[0];
   input.value = '';
   if (!file) return;
+  // planilha ou resposta da IA: vai para "Trazer histórico", que confere antes de gravar
+  if (!/\.json$/i.test(file.name) || !/"app"\s*:/.test(await file.text())) return importar.openFile(file);
   try {
     const res = await importBackup(JSON.parse(await file.text()));
     if (!current()) {
