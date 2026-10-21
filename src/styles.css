@@ -512,7 +512,7 @@ a.next-card { text-decoration: none; }
 .fchip { flex: none; display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid var(--field); background: var(--surface); font-size: 13px; font-weight: 500; color: var(--ink); }
 .fchip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 600; }
 .fchip .dot { margin-right: 6px; }
-.p-map-wrap { position: relative; display: flex; flex-direction: column; gap: 6px; }
+.p-map-wrap { position: relative; isolation: isolate; display: flex; flex-direction: column; gap: 6px; }
 .p-map { height: 240px; border-radius: 18px; overflow: hidden; background: var(--sunken); border: 1px solid var(--line); z-index: 0; }
 .p-map .leaflet-control-attribution { font-size: 10px; }
 @media (prefers-color-scheme: dark) { .p-map .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); } }

@@ -1,12 +1,12 @@
 // Números da rede por posto (preço que os usuários pagaram, rendimento medido e avaliações).
-// Vêm da tabela station_live (só agregados, recalculados a cada 15 min no servidor) e ficam
+// Vêm da tabela station_live (só agregados, recalculados a cada 5 min no servidor) e ficam
 // guardados no aparelho para abrir sem internet.
 import { getMeta, setMeta } from './db';
 import { currentSession, supabase } from './sync';
 import type { NetMap, StationLive } from './postos';
 
 const KEY = 'rede_cache_v1';
-const FRESH_MS = 10 * 60 * 1000;
+const FRESH_MS = 5 * 60 * 1000;
 const KEEP_MS = 7 * 86400000;
 const CHUNK = 150;
 

@@ -327,6 +327,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     }
     await softDelete(db.fuel_logs, editing.id);
     await deleteRating(editing.id); // a avaliação vai junto
+    if (editing.station_id) invalidateNetwork(editing.station_id);
     closeSheets();
     toast('Abastecimento excluído');
   });
@@ -446,10 +447,12 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     const after = rating.justSaved;
     if (act === 'send') {
       await saveRating({ fuel_log_id: rating.fill.id, station_id: rating.fill.station_id!, bomba: rating.bomba, atendimento: rating.atendimento, banheiro: rating.banheiro });
-      toast(rating.existed ? 'Avaliação atualizada' : 'Obrigado! Sua avaliação entra na média do posto.');
+      invalidateNetwork(rating.fill.station_id!);
+      toast(rating.existed ? 'Avaliação atualizada. A média do posto muda em até 5 minutos.' : 'Obrigado! Sua avaliação entra na média do posto.');
     } else if (act === 'del') {
       await deleteRating(rating.fill.id);
-      toast('Avaliação apagada');
+      invalidateNetwork(rating.fill.station_id!);
+      toast('Avaliação apagada. Sai da média do posto em até 5 minutos.');
     } else if (after) toast('Abastecimento salvo');
     rating = null;
     closeSheets(() => after && go('inicio'));
