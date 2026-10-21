@@ -1,0 +1,11 @@
+node_modules/
+dist/
+# Dados pessoais nunca entram no repositório
+*.backup.json
+caderneta-carro-backup-*.json
+data/
+.env
+.env.*
+
+# gerado no deploy a partir da branch dados
+public/dados/
