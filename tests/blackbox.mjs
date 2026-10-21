@@ -17,7 +17,12 @@ const bad = (m) => { fails++; console.log('FALHOU ' + m); };
 async function call(path, { method = 'GET', body, auth } = {}) {
   const headers = { apikey: KEY, 'Content-Type': 'application/json' };
   if (auth) headers.Authorization = auth;
-  const r = await fetch(URL_ + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  let r = await fetch(URL_ + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  // 502/503/504 = função "acordando" no servidor; tenta de novo antes de concluir algo
+  for (let i = 0; i < 3 && r.status >= 502 && r.status <= 504; i++) {
+    await new Promise((ok) => setTimeout(ok, 2000 * (i + 1)));
+    r = await fetch(URL_ + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  }
   let data = null;
   try { data = await r.json(); } catch { /* sem corpo */ }
   return { status: r.status, data };
