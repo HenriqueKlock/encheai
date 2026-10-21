@@ -2,6 +2,7 @@
 // rota entre casa e trabalho (OSRM, servidor público gratuito) e o arquivo público de postos.
 import { simplify, type LatLon, type StationsFile } from './postos';
 import { googlePlaces } from './sync';
+import { photonLabel } from './endereco';
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
 const OSRM = 'https://router.project-osrm.org/route/v1/driving/';
@@ -59,6 +60,31 @@ export async function searchAddress(q: string, near?: LatLon | null): Promise<Fo
   } catch (e) {
     throw new Error(navigator.onLine === false ? 'Sem internet para buscar endereços.' : 'A busca de endereços não respondeu. Tente de novo.');
   }
+}
+
+/* ---------- sugestões enquanto digita sem o Google (Photon, feito para isso, sobre o OpenStreetMap) ---------- */
+const PHOTON = 'https://photon.komoot.io/api/';
+const BR_BBOX = '-74,-34,-34,5.5';
+/** Sem casa nem trabalho, puxa levemente para Santa Catarina (onde estão os postos do app). */
+const SC_CENTER: LatLon = { lat: -27.4, lon: -49.6 };
+
+export async function suggestOSM(q: string, near?: LatLon | null): Promise<FoundPlace[]> {
+  const c = near ?? SC_CENTER;
+  const params = new URLSearchParams({ q, limit: '8', bbox: BR_BBOX, lat: String(c.lat), lon: String(c.lon), zoom: near ? '12' : '8', location_bias_scale: '0.3' });
+  const data = await getJSON(PHOTON + '?' + params);
+  const seen = new Set<string>();
+  const out: FoundPlace[] = [];
+  for (const f of (data?.features ?? []) as any[]) {
+    const p = f.properties ?? {};
+    if (p.countrycode && p.countrycode !== 'BR') continue;
+    const [lon, lat] = f.geometry?.coordinates ?? [];
+    const l = photonLabel(p);
+    const k = l.label + '|' + l.detail;
+    if (!l.label || !Number.isFinite(lat) || seen.has(k)) continue;
+    seen.add(k);
+    out.push({ lat: Number(lat), lon: Number(lon), ...l });
+  }
+  return out.slice(0, 6);
 }
 
 interface GoogleAddress { id: string; name: string; address: string; lat: number; lon: number; route: string; hood: string; city: string; state: string; types: string[] }

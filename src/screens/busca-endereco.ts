@@ -1,11 +1,14 @@
-// Campo de endereço com sugestões enquanto digita (Google) e, sem o Google, busca no OpenStreetMap ao confirmar.
+// Campo de endereço com sugestões enquanto digita: Google quando disponível (logado e com chave),
+// senão OpenStreetMap (Photon). Enter sem sugestões busca no Nominatim.
 // Cada campo tem o próprio estado: o texto de um nunca aparece no outro.
-import { newSession, placeDetails, searchAddress, suggestAddress, type FoundPlace } from '../lugares';
+import { newSession, placeDetails, searchAddress, suggestAddress, suggestOSM, type FoundPlace } from '../lugares';
 import type { LatLon } from '../postos';
 import { esc, toast } from '../ui';
 import { ICON } from '../icons';
 
 export interface AddressSearch { focus(): void; clear(): void }
+
+type Item = { kind: 'g'; id: string; main: string; secondary: string } | { kind: 'o'; place: FoundPlace };
 
 export function addressSearch(
   input: HTMLInputElement,
@@ -16,19 +19,22 @@ export function addressSearch(
   let timer: number | undefined;
   let seq = 0;
   let google: boolean | null = null; // null = ainda não sabemos
-  let list: { kind: 'g'; id: string; main: string; secondary: string }[] | { kind: 'o'; place: FoundPlace }[] = [];
+  let list: Item[] = [];
 
   function render(note = '') {
     results.hidden = !list.length && !note;
     results.innerHTML =
-      (list as any[])
+      list
         .map((x, i) =>
           '<button type="button" class="row simple" data-i="' + i + '"><span class="mid"><span class="a">' + esc(x.kind === 'g' ? x.main : x.place.label) + '</span><span class="b">' + esc(x.kind === 'g' ? x.secondary : x.place.detail) + '</span></span><span></span><span class="chev">' + ICON.chev + '</span></button>',
         )
         .join('') + (note ? '<div class="list-note">' + esc(note) + '</div>' : '');
   }
 
-  async function osm() {
+  const empty = 'Nada encontrado. Tente com o bairro e a cidade.';
+
+  /** Busca completa no Nominatim (só ao confirmar, como pede o serviço). */
+  async function nominatim() {
     const q = input.value.trim();
     if (q.length < 3) return;
     const my = ++seq;
@@ -37,7 +43,7 @@ export function addressSearch(
       const found = await searchAddress(q, opts.near());
       if (my !== seq) return;
       list = found.map((place) => ({ kind: 'o' as const, place }));
-      render(found.length ? 'Resultados do OpenStreetMap' : 'Nada encontrado. Tente com bairro e cidade.');
+      render(found.length ? '' : empty);
     } catch (e) {
       toast((e as Error).message);
     } finally {
@@ -45,46 +51,64 @@ export function addressSearch(
     }
   }
 
+  async function osmSuggest(q: string, my: number) {
+    try {
+      const found = await suggestOSM(q, opts.near());
+      if (my !== seq) return;
+      list = found.map((place) => ({ kind: 'o' as const, place }));
+      render(found.length ? '' : empty);
+    } catch {
+      if (my !== seq) return;
+      list = [];
+      render('Sugestões indisponíveis agora. Toque em Ir para buscar.');
+    }
+  }
+
   async function suggest() {
     const q = input.value.trim();
     if (q.length < 3) {
+      ++seq;
       list = [];
       return render();
     }
-    if (google === false) return render('Toque em Enter (ou Ir) para buscar.');
     const my = ++seq;
-    const s = await suggestAddress(q, session, opts.near());
-    if (my !== seq) return;
-    if (s === null) {
+    if (google !== false) {
+      const s = await suggestAddress(q, session, opts.near());
+      if (my !== seq) return;
+      if (s !== null) {
+        google = true;
+        list = s.map((x) => ({ kind: 'g' as const, ...x }));
+        return render(s.length ? '' : empty);
+      }
       google = false;
-      list = [];
-      return render('Toque em Enter (ou Ir) para buscar.');
     }
-    google = true;
-    list = s.map((x) => ({ kind: 'g' as const, ...x }));
-    render(s.length ? '' : 'Nenhuma sugestão. Tente com bairro e cidade.');
+    await osmSuggest(q, my);
   }
 
   input.addEventListener('input', () => {
     clearTimeout(timer);
-    timer = window.setTimeout(suggest, 350);
+    timer = window.setTimeout(suggest, google === false ? 300 : 250);
   });
   input.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     clearTimeout(timer);
-    if (google) suggest();
-    else osm();
+    // Enter com sugestões na tela escolhe a primeira; sem sugestões, faz a busca completa
+    const first = results.querySelector<HTMLElement>('[data-i="0"]');
+    if (first && !results.hidden) first.click();
+    else if (google) suggest();
+    else nominatim();
   });
   results.addEventListener('click', async (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-i]');
     if (!b) return;
-    const x = (list as any[])[Number(b.dataset.i)];
+    const x = list[Number(b.dataset.i)];
     if (!x) return;
     try {
       opts.onBusy?.(true);
       const place: FoundPlace = x.kind === 'g' ? await placeDetails(x.id, session) : x.place;
       session = newSession();
+      ++seq;
       list = [];
       input.value = '';
       render();
@@ -99,6 +123,7 @@ export function addressSearch(
   return {
     focus: () => input.focus({ preventScroll: true }),
     clear: () => {
+      ++seq;
       input.value = '';
       list = [];
       render();
