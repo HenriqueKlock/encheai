@@ -31,6 +31,12 @@ const HOUSE = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24
 const BAG = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg>';
 
 /** Abre o posto no Google Maps já pronto para navegar até ele. */
+/** "de hoje", "de ontem", "de 13/10" — para o preço do seu último abastecimento no posto. */
+function deDia(iso: string, today: string) {
+  const d = ago(iso, today);
+  return d === 'hoje' || d === 'ontem' ? 'de ' + d : 'de ' + dm(iso);
+}
+
 export function mapsUrl(s: Station, g?: GoogleMatch) {
   if (g) return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(g.name) + '&destination_place_id=' + encodeURIComponent(g.id);
   return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(s.la + ',' + s.lo);
@@ -258,8 +264,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (!pp) return '<span class="src none">sem preço recente</span>';
     const today = todayISO();
     const old = ageDays(pp.date, today) > 30;
-    const who = pp.src === 'voce' ? 'você pagou' : pp.src === 'rede' ? 'rede' : 'ANP';
-    return '<span class="src ' + pp.src + (old ? ' old' : '') + '">' + who + ' · ' + (pp.src === 'anp' ? dm(pp.date) : ago(pp.date, today)) + '</span>';
+    const txt = pp.src === 'voce' ? 'seu abastecimento ' + deDia(pp.date, today) : (pp.src === 'rede' ? 'rede' : 'ANP') + ' · ' + (pp.src === 'anp' ? dm(pp.date) : ago(pp.date, today));
+    return '<span class="src ' + pp.src + (old ? ' old' : '') + '">' + txt + '</span>';
   }
   function distTxt(r: StationRow, b: Base) {
     if (b.kind === 'rota') return r.distKm < 0.15 ? 'no caminho' : '+' + kmTxt(r.extraKm) + ' de desvio';
@@ -305,7 +311,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   function priceWho(pp: PricePoint) {
     const today = todayISO();
     if (pp.src === 'rede') return 'preço da rede ' + ago(pp.date, today);
-    if (pp.src === 'voce') return 'você pagou ' + ago(pp.date, today);
+    if (pp.src === 'voce') return 'preço do seu abastecimento ' + deDia(pp.date, today);
     return 'ANP ' + dm(pp.date);
   }
 
@@ -590,7 +596,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const g = google.get(s.c);
     const priceCell = (fuel: Fuel, pp: PricePoint | null) =>
       '<div class="pc"><span class="k"><i class="dot ' + (fuel === 'gasolina' ? 'gas' : 'eth') + '"></i>' + FUEL[fuel] + '</span><span class="v">' + (pp ? brl(pp.price) : '–') + '</span><span class="d ' + (pp?.src ?? '') + '">' +
-      (pp ? (pp.src === 'rede' ? 'rede · ' + pl(pp.n ?? 1, 'pessoa', 'pessoas') + ' · ' + ago(pp.date, today) : pp.src === 'voce' ? 'você pagou ' + ago(pp.date, today) : 'ANP · pesquisa de ' + dm(pp.date)) + (ageDays(pp.date, today) > 30 ? ' (antigo)' : '') : 'sem preço recente') + '</span></div>';
+      (pp ? (pp.src === 'rede' ? 'rede · ' + pl(pp.n ?? 1, 'pessoa', 'pessoas') + ' · ' + ago(pp.date, today) : pp.src === 'voce' ? 'seu último abastecimento aqui, ' + deDia(pp.date, today).replace(/^de /, '') : 'ANP · pesquisa de ' + dm(pp.date)) + (ageDays(pp.date, today) > 30 ? ' (antigo)' : '') : 'sem preço recente') + '</span></div>';
     const extra = (['ga', 'd10', 'ds', 'gnv'] as const).filter((k) => s.pr?.[k]).map((k) => ({ ga: 'Gasolina aditivada', d10: 'Diesel S10', ds: 'Diesel', gnv: 'GNV' })[k] + ' ' + brl(s.pr![k]![0])).join(' · ');
     let perKm = '';
     if (row.gas && row.eth && car.model.fuels.length > 1) {

@@ -19,6 +19,7 @@ export function addressSearch(
   let timer: number | undefined;
   let seq = 0;
   let google: boolean | null = null; // null = ainda não sabemos
+  let why: 'login' | 'off' = 'off';
   let list: Item[] = [];
 
   function render(note = '') {
@@ -56,7 +57,8 @@ export function addressSearch(
       const found = await suggestOSM(q, opts.near());
       if (my !== seq) return;
       list = found.map((place) => ({ kind: 'o' as const, place }));
-      render(found.length ? '' : empty);
+      const src = why === 'login' ? 'Sugestões do OpenStreetMap. Entre na conta para buscar no Google, que acha também empresas e lojas.' : 'Sugestões do OpenStreetMap.';
+      render(found.length ? src : empty + (why === 'login' ? ' Com a conta conectada, a busca usa o Google.' : ''));
     } catch {
       if (my !== seq) return;
       list = [];
@@ -75,12 +77,13 @@ export function addressSearch(
     if (google !== false) {
       const s = await suggestAddress(q, session, opts.near());
       if (my !== seq) return;
-      if (s !== null) {
+      if (Array.isArray(s)) {
         google = true;
         list = s.map((x) => ({ kind: 'g' as const, ...x }));
         return render(s.length ? '' : empty);
       }
       google = false;
+      why = s;
     }
     await osmSuggest(q, my);
   }

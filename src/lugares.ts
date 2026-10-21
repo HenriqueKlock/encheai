@@ -1,7 +1,7 @@
 // Localização e mapas: GPS do aparelho, busca de endereço (Nominatim/OpenStreetMap),
 // rota entre casa e trabalho (OSRM, servidor público gratuito) e o arquivo público de postos.
 import { simplify, type LatLon, type StationsFile } from './postos';
-import { googlePlaces } from './sync';
+import { currentSession, googlePlaces } from './sync';
 import { photonLabel } from './endereco';
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
@@ -70,7 +70,7 @@ const SC_CENTER: LatLon = { lat: -27.4, lon: -49.6 };
 
 export async function suggestOSM(q: string, near?: LatLon | null): Promise<FoundPlace[]> {
   const c = near ?? SC_CENTER;
-  const params = new URLSearchParams({ q, limit: '8', bbox: BR_BBOX, lat: String(c.lat), lon: String(c.lon), zoom: near ? '12' : '8', location_bias_scale: '0.3' });
+  const params = new URLSearchParams({ q, limit: '12', bbox: BR_BBOX, lat: String(c.lat), lon: String(c.lon), zoom: near ? '12' : '8', location_bias_scale: '0.3' });
   const data = await getJSON(PHOTON + '?' + params);
   const seen = new Set<string>();
   const out: FoundPlace[] = [];
@@ -84,7 +84,7 @@ export async function suggestOSM(q: string, near?: LatLon | null): Promise<Found
     seen.add(k);
     out.push({ lat: Number(lat), lon: Number(lon), ...l });
   }
-  return out.slice(0, 6);
+  return out.slice(0, 8);
 }
 
 interface GoogleAddress { id: string; name: string; address: string; lat: number; lon: number; route: string; hood: string; city: string; state: string; types: string[] }
@@ -115,13 +115,14 @@ export async function searchPlaces(q: string, near?: LatLon | null): Promise<{ l
 export interface Suggestion { id: string; main: string; secondary: string }
 export const newSession = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
 
-/** Sugestões do Google; null quando o Google não está disponível (sem login, sem chave ou fora da cota). */
-export async function suggestAddress(q: string, session: string, near?: LatLon | null): Promise<Suggestion[] | null> {
+/** Sugestões do Google, ou o motivo de não haver: sem login, sem chave no servidor ou falha/cota. */
+export async function suggestAddress(q: string, session: string, near?: LatLon | null): Promise<Suggestion[] | 'login' | 'off'> {
+  if (!(await currentSession())) return 'login';
   try {
     const res = await googlePlaces<Suggestion>({ mode: 'autocomplete', query: q, session, ...(near ? { lat: near.lat, lon: near.lon } : {}) });
-    return res.configured ? res.places : null;
+    return res.configured ? res.places : 'off';
   } catch {
-    return null;
+    return 'off';
   }
 }
 
