@@ -27,7 +27,7 @@ const REC_LABEL: Record<BaseKind, string> = {
   rota: 'Melhor opção no seu caminho', busca: 'Melhor opção perto do local escolhido',
 };
 const FUEL: Record<Fuel, string> = { gasolina: 'Gasolina', etanol: 'Etanol' };
-const RADII = [2, 5, 10];
+const RADII = [2, 5, 10, 20, 40];
 const DETOURS = [500, 1000, 2000];
 const PIN = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
 const TARGET = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg>';
@@ -378,6 +378,28 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return 'ANP ' + dm(pp.date);
   }
 
+  /** Visual novo: onde sai mais barato encher, numa linha no topo da lista (só com casa, trabalho ou caminho). */
+  function compareStrip(kind: BaseKind) {
+    const opts: [BaseKind, string][] = [];
+    if (place('casa')) opts.push(['casa', 'Casa']);
+    if (place('trabalho')) opts.push(['trabalho', 'Trabalho']);
+    const r = rota();
+    if (r?.on && r.pts.length > 1) opts.push(['rota', 'Caminho']);
+    if (opts.length < 2) return '';
+    const res = opts.map(([k, label]) => {
+      const rs = resolve(k);
+      return { k, label, best: 'base' in rs ? compute(rs.base).rec.best : null };
+    });
+    const valid = res.filter((x) => x.best);
+    if (valid.length < 2) return '';
+    const min = Math.min(...valid.map((x) => x.best!.cost));
+    return '<div class="cmp2" aria-label="Onde sai mais barato encher"><span class="cmp2-l">Tanque de ' + Math.round(carInfo().model.kmTank) + ' km</span>' +
+      res.map((x) => {
+        if (!x.best) return '<button type="button" class="cmp-cell c2" data-base="' + x.k + '">' + x.label + ' <b>–</b></button>';
+        const win = x.best.cost === min;
+        return '<button type="button" class="cmp-cell c2' + (win ? ' win' : '') + (x.k === kind ? ' cur' : '') + '" data-base="' + x.k + '" aria-pressed="' + (x.k === kind) + '">' + x.label + ' <b>' + (win ? 'R$ ' + Math.round(x.best.cost) : '+R$ ' + Math.round(x.best.cost - min)) + '</b></button>';
+      }).join('') + '</div>';
+  }
   function compareCard(kind: BaseKind) {
     const opts: [BaseKind, string][] = [];
     if (place('casa')) opts.push(['casa', 'Casa']);
@@ -572,12 +594,12 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const cheapId = rec.cheapest && rec.cheapest.s.c !== bestId ? rec.cheapest.s.c : undefined;
     const top = [bestId, cheapId].map((c) => (c ? rows.find((r) => r.s.c === c) : undefined)).filter((r): r is StationRow => !!r);
     const list = [...top, ...sorted.filter((r) => r.s.c !== bestId && r.s.c !== cheapId)];
-    let html = rec.best ? '' : noPriceCard(rows, b);
-    html += '<div class="st2-list">' + list.slice(0, limit).map((r) => row2(r, b, rec, r.s.c === bestId, r.s.c === cheapId)).join('') +
+    let html = compareStrip(base) + (rec.best ? '' : noPriceCard(rows, b));
+    const why = '<details class="why2s"><summary>' + INFO + 'Por que este é o sugerido</summary>' + sourcesNote() + '</details>';
+    html += '<div class="st2-list">' + list.slice(0, limit).map((r) => row2(r, b, rec, r.s.c === bestId, r.s.c === cheapId) + (r.s.c === bestId ? why : '')).join('') +
       (list.length > limit ? '<button type="button" class="list-more" data-act="all">Mostrar todos (' + list.length + ')</button>' : '') + '</div>';
     if (rec.cheaperUnsafe) html += '<p class="rec-warn">' + ICON.warn + '<span>' + esc(nm(rec.cheaperUnsafe.s)) + ' sairia mais barato, mas ficou de fora: ' + (rec.cheaperUnsafe.rel.recentSerious ? 'autuação séria da ANP nos últimos 12 meses.' : 'confiabilidade baixa.') + '</span></p>';
-    html += compareCard(base);
-    return html + '<details class="how2"><summary>Como o app escolhe</summary>' + sourcesNote() + '</details>';
+    return html;
   }
   function row2(r: StationRow, b: Base, rec: Recommendation, isBest: boolean, isCheap: boolean) {
     const o = isBest ? rec.best! : isCheap ? rec.cheapest! : r.best;
@@ -1345,7 +1367,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       el.innerHTML =
         '<button type="button" class="rec2" data-home-posto="' + b.s.c + '" data-base="' + kind + '">' +
         '<span class="r2-top"><span class="l">' + where + ' · agora</span>' + seloTag(b.rel) + '</span>' +
-        '<span class="r2-mid"><span class="r2-n"><span class="t">' + esc(nm(b.s)) + '</span><span class="s">' + dist + ' · ' + priceShort(b.price) + '</span></span>' + totemTag(b) + '</span>' +
+        '<span class="r2-mid"><span class="r2-n"><span class="t">' + brandBadge(b.s.b, 26) + esc(nm(b.s)) + '</span><span class="s">' + dist + ' · ' + priceShort(b.price) + '</span></span>' + totemTag(b) + '</span>' +
         (cheapTxt ? '<span class="r2-cheap">' + esc(cheapTxt) + '</span>' : '') +
         '<span class="r2-foot"><span>' + save + '</span>' + ICON.chev + '</span></button>';
       return;
@@ -1411,6 +1433,7 @@ export type PostosApi = ReturnType<typeof initPostos>;
 
 const BACK = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>';
 const SHIELD_OK = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/><path d="M8.8 12.2l2.2 2.2 4.4-4.6" stroke="var(--sh-in, #C3F25C)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const INFO = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/></svg>';
 const LUPA = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>';
 const XS = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 const PLUS = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';

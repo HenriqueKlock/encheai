@@ -211,6 +211,21 @@
 .ps2-name h2 .bd.branca { background: transparent; color: var(--on-mata-2); box-shadow: inset 0 0 0 1.5px var(--on-mata-2); }
 .st2 .nm .t2 { margin-right: 6px; }
 
+/* onde sai mais barato encher e por que o sugerido */
+.cmp2 { flex: none; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -14px; padding: 0 14px; }
+.cmp2::-webkit-scrollbar { display: none; }
+.cmp2-l { flex: none; font-size: 12px; font-weight: 600; color: var(--muted); }
+.cmp2 .c2 { flex: none; display: inline-flex; flex-direction: row; align-items: center; justify-content: center; min-width: 0; gap: 4px; white-space: nowrap; height: 34px; padding: 0 12px; border-radius: 17px; border: 1.5px solid var(--field); background: var(--surface); font-size: 13px; font-weight: 600; color: var(--ink); }
+.cmp2 .c2 b { font-family: var(--display); font-weight: 800; margin-left: 2px; color: var(--muted); }
+.cmp2 .c2.win b { color: var(--link); }
+.cmp2 .c2.cur { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.why2s { margin: -2px 4px 2px; font-size: 13px; color: var(--muted); }
+.why2s summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; padding: 4px 0; font-weight: 600; color: var(--link); }
+.why2s summary::-webkit-details-marker { display: none; }
+.why2s .foot-note { padding: 4px 0 2px; }
+.rec2 .t .bd { vertical-align: 1px; margin-right: 8px; }
+.rec2 .t .bd.branca { background: transparent; color: var(--on-mata-2); box-shadow: inset 0 0 0 1.5px var(--on-mata-2); }
+
 /* busca pelo nome */
 .v2 .fchip.lupa { width: 40px; padding: 0; justify-content: center; }
 .q2 { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 4px 0 14px; margin: 2px 0 4px; border-radius: 23px; background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1.5px var(--link); }
@@ -428,6 +443,9 @@
 .rec2 .r2-foot svg { flex: none; color: #C3F25C; width: 22px; height: 22px; }
 @media (prefers-color-scheme: dark) { .rec2 { box-shadow: inset 0 0 0 1px #23574A; } }
 
+.v2 #home-consumo { display: flex; flex-direction: column; gap: 6px; }
+.m2-v.long { font-size: 24px; white-space: normal; line-height: 1.1; }
+.m2-edit { align-self: flex-end; padding: 2px 4px; font-size: 13px; font-weight: 600; color: var(--link); text-decoration: none; }
 .mes2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .m2 { text-decoration: none; color: var(--ink); background: var(--surface); border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .m2-k { font-size: 13px; color: var(--muted); }

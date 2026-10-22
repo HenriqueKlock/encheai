@@ -105,11 +105,11 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
         : '<a class="card mn2" href="#/carro/manutencao"><span class="mn2-ic">' + ICON.wrench + '</span><span class="mn2-b"><b class="mn2-t">Manutenção</b><span class="mn2-sub">Registre a última revisão para ver as próximas trocas</span></span>' + ICON.chev + '</a>';
     }
     el.innerHTML = consumo +
+      '<div class="car2-links"><a href="#/indicadores">' + ICON.chart + 'Indicadores</a><a href="#/etanol"><b>%</b>Etanol × gasolina</a></div>' +
       (!fs.length && !S.services.some((s2) => s2.vehicle_id === v.id && !s2.deleted_at)
         ? '<a class="card start-card" href="#/importar"><span class="ic gray">' + ICON.upload + '</span><span class="mid"><span class="a">Já tem histórico do ' + esc(v.name) + '?</span><span class="b">Planilha, PDF de manutenção com a sua IA ou o Claude.</span></span><span class="chev">' + ICON.chev + '</span></a>'
         : '') +
-      manut +
-      '<div class="car2-links"><a href="#/indicadores">' + ICON.chart + 'Indicadores</a><a href="#/etanol"><b>%</b>Etanol × gasolina</a></div>';
+      manut;
   }
 
   function renderResumo(v: Vehicle | undefined) {

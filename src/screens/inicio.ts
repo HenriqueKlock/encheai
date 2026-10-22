@@ -66,13 +66,25 @@ export function initInicio(opts: { signedIn: () => boolean; renderRec: () => voi
     const spark = bars.length > 1
       ? '<span class="m2-bars" aria-hidden="true">' + bars.map((d, i) => '<i' + (i === bars.length - 1 ? ' class="on"' : '') + ' style="height:' + Math.round(30 + ((d.kml - min) / (max - min || 1)) * 70) + '%"></i>').join('') + '</span>'
       : '<span class="m2-s">' + (carLogs().length ? 'falta um tanque cheio' : 'registre o 1º tanque') + '</span>';
+    // os indicadores escolhidos em Meu carro › Indicadores viram blocos; gasto e km do mês dividem um bloco
+    const chosen = CATALOG.filter((c) => S.prefs.ids.includes(c.id)).map((c) => c.id);
     const g = ind.gasto_mes, k = ind.km_mes;
-    const sub = [g.sub.startsWith('nada') ? '' : g.sub.replace(/abastecimentos?/, (m) => (m.endsWith('s') ? 'tanques' : 'tanque')), k.value !== '0 km' ? k.value : ''].filter(Boolean).join(' · ') || g.sub;
+    const merge = chosen.includes('gasto_mes') && chosen.includes('km_mes');
+    const tile = (label: string, value: string, sub: string) =>
+      '<a class="m2" href="#/indicadores"><span class="m2-k">' + esc(label) + '</span><span class="m2-v' + (value.length > 9 ? ' long' : '') + '">' + esc(value) + '</span><span class="m2-s">' + esc(sub) + '</span></a>';
+    const tiles = chosen.filter((id) => !(merge && id === 'km_mes')).map((id) => {
+      if (id === 'gasto_mes') {
+        const sub = [g.sub.startsWith('nada') ? '' : g.sub.replace(/abastecimentos?/, (m) => (m.endsWith('s') ? 'tanques' : 'tanque')), merge && k.value !== '0 km' ? k.value : ''].filter(Boolean).join(' · ') || g.sub;
+        return tile('Gasto em ' + monthName(monthKey(today)), g.value.replace(/,\d\d$/, ''), sub);
+      }
+      const x = ind[id];
+      return tile(x.name, x.value, x.sub);
+    });
     $('home-consumo').innerHTML =
       '<div class="mes2">' +
       '<a class="m2" href="#/carro"><span class="m2-k">Consumo</span><span class="m2-v">' + (iv.length ? fmt(all.kml, 1) : '–') + ' <small>km/l</small></span>' + spark + '</a>' +
-      '<a class="m2" href="#/indicadores"><span class="m2-k">Gasto em ' + esc(monthName(monthKey(today))) + '</span><span class="m2-v">' + esc(g.value.replace(/,\d\d$/, '')) + '</span><span class="m2-s">' + esc(sub) + '</span></a>' +
-      '</div>';
+      tiles.join('') +
+      '</div><a class="m2-edit" href="#/indicadores">Escolher indicadores</a>';
   }
 
   function nextMaintenanceRow(v: Vehicle): string {
