@@ -734,7 +734,7 @@ a.next-card { text-decoration: none; }
 }
 
 /* primeiro acesso: caminhos para começar */
-.start-imp { display: block; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.start-imp { display: block; margin-top: 8px; text-align: center; font-size: 13px; color: var(--muted); }
 .start-imp b { color: var(--ink-2); font-weight: 600; }
 .card.start-card { display: flex; flex-direction: row; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); }
 .start-card .mid { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
@@ -746,3 +746,6 @@ a.next-card { text-decoration: none; }
 .row.wrap .chev { align-self: center; }
 .skip-note { font-size: 12px; color: var(--muted); text-align: center; margin: -6px 8px 0; line-height: 1.45; }
 .start-card .ic { width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; flex: none; background: var(--soft); color: var(--ink-2); }
+/* botões do "Comece por aqui": um embaixo do outro, largura toda, texto numa linha */
+.btn-row.start-btns { grid-template-columns: 1fr; gap: 8px; }
+.btn-row.start-btns .btn { width: 100%; white-space: nowrap; }
