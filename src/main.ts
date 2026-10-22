@@ -68,6 +68,7 @@ document.addEventListener('click', async (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
   if (!el) return;
   if (el.dataset.act === 'import') $<HTMLInputElement>('imp-file').click();
+  if (el.dataset.act === 'fill') fill.open(null);
   if (el.dataset.act === 'legacy') {
     await perfil.importLegacy();
     legacyCount = null;

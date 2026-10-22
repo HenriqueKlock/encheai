@@ -56,9 +56,9 @@ export function initImportar() {
       case 'menu':
         return (
           '<div class="list-card">' +
-          opt('planilha', ICON.chart, 'Planilha', 'Excel ou CSV com uma linha por abastecimento ou por item de manutenção. Sem IA.') +
-          opt('ia', SPARK, 'Com a sua IA', 'Fotos de OS, anotações e planilhas bagunçadas. Funciona com Claude, ChatGPT ou Gemini.') +
-          (MCP_READY ? opt('claude', PLUG, 'Conectar o Claude', 'O Claude lê os seus arquivos e registra direto na sua conta.') : '') +
+          opt('planilha', ICON.chart, 'Planilha', 'Excel ou CSV organizado, uma linha por abastecimento ou por item de manutenção. Sem IA. Ex.: a planilha onde você já anota os abastecimentos.') +
+          opt('ia', SPARK, 'Com a sua IA', 'PDFs e fotos de notas de manutenção, anotações e planilhas bagunçadas. Funciona com Claude, ChatGPT ou Gemini: você copia as instruções, a IA organiza e você cola a resposta aqui.') +
+          (MCP_READY ? opt('claude', PLUG, 'Conectar o Claude', 'Para quem usa o Claude: ele lê os seus arquivos e registra direto na sua conta, sempre mostrando antes o que vai entrar.') : '') +
           '</div>' +
           '<div class="card"><span class="b15">Modelos de planilha</span><span class="hint">Preencha no Excel ou no Google Planilhas e importe aqui.</span>' +
           '<div class="btn-row"><button type="button" class="btn sm" data-tpl="abastecimentos">Abastecimentos</button><button type="button" class="btn sm" data-tpl="manutencoes">Manutenções</button></div></div>' +
@@ -141,7 +141,7 @@ export function initImportar() {
   }
 
   const opt = (k: string, icon: string, a: string, b: string) =>
-    '<button type="button" class="row nav" data-imp="' + k + '"><span class="ic gray">' + icon + '</span><span class="mid"><span class="a">' + a + '</span><span class="b">' + b + '</span></span><span class="chev">' + ICON.chev + '</span></button>';
+    '<button type="button" class="row nav wrap" data-imp="' + k + '"><span class="ic gray">' + icon + '</span><span class="mid"><span class="a">' + a + '</span><span class="b">' + b + '</span></span><span class="chev">' + ICON.chev + '</span></button>';
   const backBtn = () => '<button type="button" class="link-btn muted" data-imp="menu">' + '← Outras formas de importar</button>';
   const letter = (i: number) => (i >= 26 ? String.fromCharCode(64 + Math.floor(i / 26)) : '') + String.fromCharCode(65 + (i % 26));
 

@@ -32,7 +32,8 @@ export function showWelcome(opts: { legacyCount: number | null; onClose: () => v
     '<ul class="values">' +
     '<li><span class="vi">' + BOOK + '</span><span><b>Seu caderno do carro</b><span>Consumo, gastos e manutenção. Funciona sem internet.</span></span></li>' +
     '<li><span class="vi blue">' + PIN + '</span><span><b>Postos com dados de verdade</b><span>Preço recente, fiscalização da ANP e quanto o combustível rende para quem abastece lá.</span></span></li>' +
-    '<li><span class="vi green">' + CHECK + '</span><span><b>Avalie em um toque</b><span>Depois de abastecer: bomba, atendimento e banheiro.</span></span></li>' +
+    '<li><span class="vi green">' + CHECK + '</span><span><b>Avalie em um toque</b><span>Nota do posto e, no dia seguinte, como o carro andou com aquele combustível.</span></span></li>' +
+    '<li><span class="vi">' + UPLOAD + '</span><span><b>Traga seu histórico</b><span>Planilha, PDF de manutenção com a sua IA ou o Claude. Nada entra antes de você conferir.</span></span></li>' +
     '</ul>' +
     (opts.legacyCount ? '<p class="legacy-note">Encontramos ' + opts.legacyCount + ' abastecimentos do app anterior neste celular. Depois de entrar, toque em “Trazer meus dados” no Início.</p>' : '') +
     '<div class="consent"><label><input type="checkbox" id="w-consent" checked>Contribuir com a rede, sem meu nome</label>' +
@@ -40,6 +41,7 @@ export function showWelcome(opts: { legacyCount: number | null; onClose: () => v
     '<a href="#/privacidade" id="w-privacy">Ler a política de privacidade</a></div>' +
     '<div id="w-login"></div>' +
     '<button type="button" class="text-btn" id="w-skip">Usar sem conta por enquanto</button>' +
+    '<p class="skip-note">Sem conta, o caderno do carro funciona neste celular, mas você não vê o preço que a rede pagou nem o rendimento medido de cada posto, e seus dados não ficam guardados na nuvem.</p>' +
     '</div>';
   const consent = $<HTMLInputElement>('w-consent');
   const remember = () => setMeta(CHOICE, consent.checked);
@@ -65,4 +67,5 @@ export function hideWelcome() {
 
 const BOOK = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z"/><path d="M5 18a2 2 0 0 1 2-2h11M9 8h5M9 11h5"/></svg>';
 const PIN = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+const UPLOAD = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>';
 const CHECK = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg>';

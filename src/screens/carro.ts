@@ -63,6 +63,9 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
       '<div class="hero-val"><strong>' + (iv.length ? fmt(all.kml, 2) : '–') + '</strong><span>km/l</span></div>' +
       '<span class="hint">' + (iv.length ? (iv.length >= 3 ? 'Últimos 3 tanques: <b>' + fmt(l3.kml, 2) + '</b> · ' : '') + km(all.km) + ' km medidos em ' + pl(iv.length, 'tanque', 'tanques') : fs.length ? 'Registre mais um tanque cheio para calcular o consumo.' : 'Toque em Abastecer para registrar o primeiro abastecimento.') + '</span>' +
       '<div class="spark" aria-hidden="true">' + sparkBars(iv) + '</div></div>' +
+      (!fs.length && !S.services.some((s) => s.vehicle_id === v.id && !s.deleted_at)
+        ? '<a class="card start-card" href="#/importar"><span class="ic gray">' + ICON.upload + '</span><span class="mid"><span class="a">Já tem histórico do ' + esc(v.name) + '?</span><span class="b">Traga de uma planilha, de PDFs de manutenção com a sua IA ou pelo Claude. Você confere antes de gravar.</span></span><span class="chev">' + ICON.chev + '</span></a>'
+        : '') +
       '<div class="stat-grid three"><div class="stat"><span class="k">Custo</span><span class="v">' + (Number.isFinite(rpk) ? brl(rpk) : '–') + '</span><span class="s">por km</span></div>' +
       '<div class="stat"><span class="k">Odômetro</span><span class="v">' + km(curKm) + '</span><span class="s">' + (Number.isFinite(kpd) && kpd > 0 ? '≈ ' + km(kpd * 30) + ' km/mês' : 'km') + '</span></div>' +
       '<div class="stat"><span class="k">Gasto total</span><span class="v">' + brl(tot) + '</span><span class="s">' + pl(fs.length, 'abastecimento', 'abastecimentos') + '</span></div></div>' +
@@ -122,7 +125,7 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
       }
     }
     if (!entries.length) {
-      $('hist').innerHTML = '<div class="empty">' + (histFilter === 'manut' ? 'Nenhuma manutenção registrada.' : 'Nenhum abastecimento ainda.') + '</div>';
+      $('hist').innerHTML = '<div class="empty">' + (histFilter === 'manut' ? 'Nenhuma manutenção registrada.' : 'Nenhum abastecimento ainda.') + '<br><a class="link-btn" href="#/importar">Trazer histórico (planilha, PDF de manutenção ou Claude)</a></div>';
       return;
     }
     entries.sort((a, b) => b.date.localeCompare(a.date) || b.odo - a.odo);

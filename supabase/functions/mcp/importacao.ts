@@ -295,8 +295,12 @@ export function planImport(p: Parsed, existing: Existing, vehicleFuel: VehicleFu
   }
   // km tem que crescer com a data (juntando com o que já existe)
   const all = [...existing.fills.map((f) => ({ ...f, novo: false })), ...fills.map((f) => ({ ...f, novo: true }))].sort((a, b) => a.date.localeCompare(b.date) || a.odometer_km - b.odometer_km);
-  let bad = 0;
+  let bad = 0, same = 0;
   for (let i = 1; i < all.length; i++) {
+    // mesmo km em dias diferentes: o carro não rodou nada entre um e outro, quase sempre km copiado errado
+    if (all[i].odometer_km === all[i - 1].odometer_km && all[i].date !== all[i - 1].date && (all[i].novo || all[i - 1].novo)) {
+      if (same++ < 5) warnings.push('Km repetido: ' + dm(all[i].date) + ' e ' + dm(all[i - 1].date) + ' com ' + all[i].odometer_km.toLocaleString('pt-BR') + ' km');
+    }
     if (all[i].odometer_km < all[i - 1].odometer_km && (all[i].novo || all[i - 1].novo)) {
       if (bad < 5) warnings.push('Km fora de ordem: ' + dm(all[i].date) + ' com ' + all[i].odometer_km.toLocaleString('pt-BR') + ' km, menor que ' + all[i - 1].odometer_km.toLocaleString('pt-BR') + ' km em ' + dm(all[i - 1].date));
       bad++;

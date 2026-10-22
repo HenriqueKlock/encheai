@@ -109,3 +109,10 @@ test('a função do servidor usa a mesma cópia do núcleo de importação', () 
   const b = readFileSync(new URL('../supabase/functions/mcp/importacao.ts', import.meta.url), 'utf8');
   assert.equal(b, a, 'rode: cp src/importacao.ts supabase/functions/mcp/importacao.ts');
 });
+
+test('conferência avisa km repetido em dias diferentes (o carro não rodou nada entre os dois)', () => {
+  const p = parseImport({ formato: FORMATO, abastecimentos: [{ data: '2026-10-20', km: 91110, litros: 30, valor_total: 200, combustivel: 'gasolina' }] });
+  const plan = planImport(p, { fills: [{ date: '2026-10-13', odometer_km: 91110, total_brl: 275.13 }], services: [] }, 'flex');
+  assert.equal(plan.fills.length, 1);
+  assert.ok(plan.warnings.some((w) => w.startsWith('Km repetido: 20/10/2026 e 13/10/2026')), plan.warnings.join(' | '));
+});
