@@ -167,7 +167,7 @@
     <h2>Quem cuida dos seus dados</h2>
     <p>O Enche AI é mantido por Henrique Klock, responsável (controlador) pelos dados tratados no app. Pedidos, dúvidas e reclamações sobre seus dados: <b>henriqueklock20@gmail.com</b>. Respondemos em até 15 dias.</p>
     <h2>O que o app guarda</h2>
-    <p>Seus carros, abastecimentos, manutenções (com o arquivo da OS, se você anexar), os indicadores que escolheu e, se você cadastrar, a rua e o ponto no mapa de casa e do trabalho, sem número. Tudo fica primeiro no seu celular e, com a conta conectada, numa cópia na nuvem (Supabase, servidores em São Paulo) que só a sua conta acessa. Também guardamos o seu e-mail (para entrar), as avaliações de postos, os preços da bomba que você informar, o endereço de entrega do lembrete (se ligar) e os relatos que você mandar.</p>
+    <p>Seus carros, abastecimentos, manutenções (com o arquivo da OS, se você anexar), os indicadores que escolheu e, se você cadastrar, a rua e o ponto no mapa de casa e do trabalho, sem número. Tudo fica primeiro no seu celular e, com a conta conectada, numa cópia na nuvem (Supabase, servidores em São Paulo) que só a sua conta acessa. Também guardamos o seu e-mail (para entrar), as avaliações de postos, os preços da bomba que você informar, as correções de qual é o posto no Google, o endereço de entrega do lembrete (se ligar) e os relatos que você mandar.</p>
     <h2>Para que e com qual base legal</h2>
     <ul>
       <li><b>Funcionar o app e guardar seus registros na sua conta</b>: execução do serviço que você pediu ao criar a conta.</li>
@@ -185,7 +185,7 @@
     </ul>
     <p>Quem não quer que seus abastecimentos entrem nesses números desliga "Contribuir com a rede" no Perfil.</p>
     <h2>A rede de postos</h2>
-    <p>O que aparece para todos são <b>números agregados por posto</b>: o preço pago (e o preço da bomba informado) nos últimos 7 dias, quanto o combustível rende em comparação com o normal de cada pessoa e as avaliações (estrelas, bomba, atendimento, banheiro e como o carro andou depois). O app nunca mostra quem abasteceu, nunca o horário, nunca casa ou trabalho. O rendimento de um posto só aparece com pelo menos 5 pessoas e 15 tanques, cada item da avaliação com pelo menos 3 respostas e as estrelas com pelo menos 5 notas. O preço aparece com a data do dia.</p>
+    <p>O que aparece para todos são <b>números agregados por posto</b>: o preço pago (e o preço da bomba informado) nos últimos 7 dias, quanto o combustível rende em comparação com o normal de cada pessoa e as avaliações (estrelas, bomba, atendimento, banheiro e como o carro andou depois). O app nunca mostra quem abasteceu, nunca o horário, nunca casa ou trabalho. O rendimento de um posto só aparece com pelo menos 5 pessoas e 15 tanques, cada item da avaliação com pelo menos 3 respostas e as estrelas com pelo menos 5 notas. O preço aparece com a data do dia. Quando você corrige qual é o posto no Google, a correção vale para todos quando outra pessoa escolher o mesmo; ninguém vê quem corrigiu.</p>
     <p>O lembrete do combustível chega às 19h do dia seguinte ao abastecimento. Guardamos só o endereço de entrega que o navegador cria para isso; a notificação não leva dados seus.</p>
     <h2>Serviços de fora (alguns fora do Brasil)</h2>
     <ul>
@@ -327,6 +327,10 @@
 </div>
 
 <!-- Outro local -->
+<div class="sheet" id="gfix-sheet" role="dialog" aria-labelledby="gfix-title">
+  <div class="grab"></div>
+  <div class="sheet-body"><div class="stack" id="gfix-body"></div></div>
+</div>
 <div class="sheet" id="local-sheet" role="dialog" aria-labelledby="local-title">
   <div class="grab"></div>
   <div class="sheet-body"><div class="stack">

@@ -589,6 +589,24 @@
 
 /* ---------- computador (tela larga): navegação na lateral, Postos com lista ao lado do mapa,
    folhas como janelas no centro. No celular nada disto vale. ---------- */
+/* ficha: este posto no Google (confirmar ou corrigir a ligação) */
+.gp2 { display: flex; flex-direction: column; gap: 4px; }
+.gp2-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; font-weight: 600; color: var(--muted); }
+.gp2-tag { font-size: 12px; font-weight: 700; color: var(--ok-ink); background: var(--ok-bg); border-radius: 10px; padding: 2px 8px; }
+.gp2-n { font-size: 16px; }
+.gp2-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.gp2-ok { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; color: var(--ok-ink); }
+.gp2-ok svg { width: 16px; height: 16px; }
+.gfix-q { display: flex; gap: 8px; }
+.gfix-q .inp { flex: 1; min-width: 0; }
+.gfix-list { display: flex; flex-direction: column; gap: 8px; }
+.gfix-row { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 16px; background: var(--surface, #fff); box-shadow: inset 0 0 0 1px var(--line); }
+.gfix-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.gfix-row.cur { box-shadow: inset 0 0 0 2px var(--primary); }
+.gfix-t { display: flex; align-items: center; gap: 8px; }
+.gfix-t em { font-style: normal; font-size: 12px; font-weight: 700; color: var(--ok-ink); background: var(--ok-bg); border-radius: 10px; padding: 1px 8px; }
+#gfix-body .btn.cur { box-shadow: inset 0 0 0 2px var(--primary); }
+
 @media (min-width: 960px) {
   .v2 nav.tabbar { top: 0; bottom: 0; right: auto; width: 104px; padding: 28px 0; border-top: 0; border-right: 1px solid var(--line); }
   .v2 nav.tabbar .in { height: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: none; }

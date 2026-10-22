@@ -13,8 +13,8 @@ function distKm(a: { lat: number; lon: number }, b: { lat: number; lon: number }
 }
 
 export interface GooglePhoto { name: string; author: string; authorUri: string }
-export interface GoogleStation { id: string; name: string; address: string; lat: number; lon: number; rating: number | null; count: number; photo?: GooglePhoto | null }
-export interface GoogleMatch { id: string; name: string; rating: number | null; count: number; lat: number; lon: number; photo?: GooglePhoto | null }
+export interface GoogleStation { id: string; name: string; address: string; lat: number; lon: number; rating: number | null; count: number; photo?: GooglePhoto | null; status?: string }
+export interface GoogleMatch { id: string; name: string; rating: number | null; count: number; lat: number; lon: number; photo?: GooglePhoto | null; address?: string }
 
 const STOP = new Set('posto postos auto autoposto ltda me epp eireli sa s a comercio com de da do das dos e combustiveis combustivel derivados petroleo servicos servico serv conveniencia rede abastecimento center centro and the loja filial'.split(' '));
 const BRANDS: Record<string, string> = { shell: 'Shell', raizen: 'Shell', ipiranga: 'Ipiranga', petrobras: 'Petrobras', br: 'Petrobras', vibra: 'Petrobras', ale: 'Ale', alesat: 'Ale' };
@@ -100,10 +100,20 @@ export function rankForStation(places: GoogleStation[], s: StationLike): { g: Go
   return out.sort((a, b) => b.v - a.v);
 }
 
+/**
+ * Dois lugares do Google que são o mesmo ponto físico deste posto: os dois com o endereço completo dele
+ * (rua e número) ou a menos de 60 m um do outro. Acontece quando o posto troca de nome ou de bandeira e o
+ * Google fica com o cadastro antigo (sem avaliações) ao lado do novo.
+ */
+export function sameSpot(a: GoogleStation, b: GoogleStation, s: StationLike): boolean {
+  const full = (g: GoogleStation) => { const ev = addressEvidence(g, s); return ev.num && ev.street >= 1; };
+  return (full(a) && full(b)) || distKm(a, b) < 0.06;
+}
+
 /** O melhor resultado de uma busca feita para este posto (veja rankForStation). */
 export function bestForStation(places: GoogleStation[], s: StationLike): GoogleMatch | null {
   const best = rankForStation(places, s)[0]?.g;
-  return best ? { id: best.id, name: best.name, rating: best.rating, count: best.count, lat: best.lat, lon: best.lon, photo: best.photo ?? null } : null;
+  return best ? { id: best.id, name: best.name, rating: best.rating, count: best.count, lat: best.lat, lon: best.lon, photo: best.photo ?? null, address: best.address } : null;
 }
 
 /** Liga cada lugar do Google a no máximo um posto da ANP (os pares mais parecidos primeiro). */
@@ -121,7 +131,7 @@ export function matchGoogle(places: GoogleStation[], stations: StationLike[]): M
   for (const { g, s } of pairs) {
     if (usedG.has(g.id) || out.has(s.c)) continue;
     usedG.add(g.id);
-    out.set(s.c, { id: g.id, name: g.name, rating: g.rating, count: g.count, lat: g.lat, lon: g.lon, photo: g.photo ?? null });
+    out.set(s.c, { id: g.id, name: g.name, rating: g.rating, count: g.count, lat: g.lat, lon: g.lon, photo: g.photo ?? null, address: g.address });
   }
   return out;
 }

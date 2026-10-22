@@ -543,5 +543,21 @@ export function recommend(rows: StationRow[]): Recommendation {
 }
 
 /* ---------- casar postos do Google com os da ANP (src/casar.ts, também usado no servidor) ---------- */
-export { matchScore, bestForStation, matchGoogle, nameTokens, streetTokens, houseNumber } from './casar.ts';
+export { matchScore, bestForStation, matchGoogle, nameTokens, streetTokens, houseNumber, sameSpot, rankForStation } from './casar.ts';
 export type { GooglePhoto, GoogleStation, GoogleMatch } from './casar.ts';
+
+/**
+ * Nome do posto quando não há o do Google: o da ANP, mas sem uma bandeira que o posto já não tem
+ * ("Posto Ipiranga" que hoje é Shell vira "Posto Shell"). A ANP demora a atualizar o nome; a bandeira, não.
+ */
+export function anpName(s: Pick<Station, 'n' | 'b'>): string {
+  const BIG: Record<string, string> = { shell: 'Shell', raizen: 'Shell', ipiranga: 'Ipiranga', petrobras: 'Petrobras', br: 'Petrobras', vibra: 'Petrobras', ale: 'Ale', alesat: 'Ale' };
+  if (!['Shell', 'Ipiranga', 'Petrobras', 'Ale'].includes(s.b)) return s.n;
+  let changed = false;
+  const out = s.n.replace(/[A-Za-zÀ-ÿ]+/g, (w) => {
+    const k = w.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    if (BIG[k] && BIG[k] !== s.b) { changed = true; return s.b; }
+    return w;
+  });
+  return changed ? out.replace(new RegExp('\\b(' + s.b + ')(\\s+\\1\\b)+', 'g'), '$1') : s.n;
+}

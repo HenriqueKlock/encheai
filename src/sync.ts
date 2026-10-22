@@ -484,21 +484,61 @@ export async function googleReviews(id: string): Promise<GoogleReviews | null> {
   return d.configured ? d : null;
 }
 
-/**
- * Postos já ligados ao Google pelo servidor (CNPJ → place_id; só o id, que pode ser guardado).
- * Fica no aparelho e é renovado uma vez por dia.
- */
-export async function stationPlaces(): Promise<Map<string, string>> {
-  const KEY = 'station_places';
-  const cached = await getMeta<{ at: number; rows: [string, string][] } | null>(KEY, null);
-  if (cached && Date.now() - cached.at < 864e5) return new Map(cached.rows);
-  try {
-    const { data, error } = await supabase.from('station_places').select('station_id,place_id').not('place_id', 'is', null).limit(5000);
-    if (error) throw error;
-    const rows = (data as { station_id: string; place_id: string }[]).map((r) => [r.station_id, r.place_id] as [string, string]);
-    await setMeta(KEY, { at: Date.now(), rows });
-    return new Map(rows);
-  } catch {
-    return new Map(cached?.rows ?? []);
+/** Ligação posto da ANP → lugar do Google. null = "este posto não está no Google" (dito por quem usa o app). */
+export interface PlaceLinks {
+  /** O que vale neste aparelho: a ligação do servidor, com as correções da própria pessoa por cima. */
+  place: Map<string, string | null>;
+  /** O que a própria pessoa corrigiu ou confirmou (vale para ela na hora; para todos quando outra concordar). */
+  mine: Map<string, string | null>;
+  /** Postos cuja ligação foi decidida pelas pessoas (e não pela busca automática). */
+  people: Set<string>;
+}
+const LINKS_KEY = 'station_places_v2';
+type LinksCache = { at: number; rows: [string, string | null, boolean][]; mine: [string, string | null][] };
+const toLinks = (c: LinksCache): PlaceLinks => {
+  const place = new Map<string, string | null>(c.rows.map(([s, p]) => [s, p]));
+  for (const [s, p] of c.mine) {
+    // um lugar do Google fica com um posto só: a escolha da pessoa tira o lugar de outro posto
+    if (p) for (const [o, q] of place) if (q === p && o !== s) place.delete(o);
+    place.set(s, p);
   }
+  return { place, mine: new Map(c.mine), people: new Set(c.rows.filter((r) => r[2]).map((r) => r[0])) };
+};
+/**
+ * Postos já ligados ao Google (CNPJ → place_id; só o id, que pode ser guardado). Fica no aparelho por
+ * uma hora; com `fresh`, busca de novo. Sem internet, vale a última cópia.
+ */
+export async function stationPlaces(fresh = false): Promise<PlaceLinks> {
+  const cached = await getMeta<LinksCache | null>(LINKS_KEY, null);
+  if (!fresh && cached && cached.rows.length && Date.now() - cached.at < 3600e3) return toLinks(cached);
+  try {
+    const { data, error } = await supabase.from('station_places').select('station_id,place_id,source').or('place_id.not.is.null,source.eq.pessoas').limit(5000);
+    if (error) throw error;
+    const rows = (data as { station_id: string; place_id: string | null; source: string }[]).map((r) => [r.station_id, r.place_id, r.source === 'pessoas'] as [string, string | null, boolean]);
+    let mine: [string, string | null][] = cached?.mine ?? [];
+    if (await currentSession()) {
+      const v = await supabase.from('station_place_votes').select('station_id,place_id').limit(2000);
+      if (!v.error) mine = (v.data as { station_id: string; place_id: string | null }[]).map((r) => [r.station_id, r.place_id]);
+    }
+    const c: LinksCache = { at: Date.now(), rows, mine };
+    await setMeta(LINKS_KEY, c);
+    return toLinks(c);
+  } catch {
+    return toLinks(cached ?? { at: 0, rows: [], mine: [] });
+  }
+}
+/**
+ * A pessoa diz qual é o posto no Google (ou null: não está no Google). Devolve se já vale para todos
+ * (duas pessoas concordaram ou quem corrigiu administra o app) ou uma mensagem de erro.
+ */
+export async function votePlace(stationId: string, placeId: string | null): Promise<{ applied: boolean } | { error: string }> {
+  const s = await currentSession();
+  if (!s) return { error: 'Entre na conta (Perfil) para corrigir o posto.' };
+  const { error } = await supabase.from('station_place_votes').upsert({ user_id: s.user.id, station_id: stationId, place_id: placeId, created_at: new Date().toISOString() });
+  if (error) return { error: /Muitas correções/.test(error.message) ? 'Muitas correções hoje. Tente amanhã.' : 'Não deu para salvar a correção agora.' };
+  const cached = await getMeta<LinksCache | null>(LINKS_KEY, null);
+  if (cached) await setMeta(LINKS_KEY, { ...cached, mine: [...cached.mine.filter(([c]) => c !== stationId), [stationId, placeId]] });
+  const row = await supabase.from('station_places').select('place_id,source').eq('station_id', stationId).maybeSingle();
+  const r = row.data as { place_id: string | null; source: string } | null;
+  return { applied: !!r && r.source === 'pessoas' && r.place_id === placeId };
 }
