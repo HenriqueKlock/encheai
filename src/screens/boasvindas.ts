@@ -23,7 +23,7 @@ export async function applyConsentChoice() {
   await setMeta(DONE, true);
 }
 
-export function showWelcome(opts: { legacyCount: number | null; onClose: () => void }) {
+export function showWelcome(opts: { onClose: () => void }) {
   const el = $('v-boasvindas');
   document.body.classList.add('welcoming');
   el.hidden = false;
@@ -37,7 +37,6 @@ export function showWelcome(opts: { legacyCount: number | null; onClose: () => v
     '<li><span class="vi green">' + CHECK + '</span><span><b>Avalie em um toque</b><span>Nota do posto e, no dia seguinte, como o carro andou com aquele combustível.</span></span></li>' +
     '<li><span class="vi">' + UPLOAD + '</span><span><b>Traga seu histórico</b><span>Planilha, PDF de manutenção com a sua IA ou o Claude. Nada entra antes de você conferir.</span></span></li>' +
     '</ul>' +
-    (opts.legacyCount ? '<p class="legacy-note">Encontramos ' + opts.legacyCount + ' abastecimentos do app anterior neste celular. Depois de entrar, toque em “Trazer meus dados” no Início.</p>' : '') +
     '<div class="consent"><label><input type="checkbox" id="w-consent" checked>Contribuir com a rede, sem meu nome</label>' +
     '<span>Seus abastecimentos com posto entram só em médias por posto, com volume mínimo: nunca quem, nunca o horário, nunca casa ou trabalho. Esses números agregados também podem ir para relatórios e parcerias. Desmarque aqui ou desligue depois no Perfil. Para maiores de 18 anos.</span>' +
     '<a href="#/privacidade" id="w-privacy">Ler a política de privacidade</a></div>' +

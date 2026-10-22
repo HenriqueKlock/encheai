@@ -13,13 +13,12 @@ import { currentRoute, onShow } from '../router';
 import { ICON } from '../icons';
 import { AFTER_OPTIONS, pendingAfter, type AfterEffect } from '../depois';
 
-export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel_logs: number } | null; renderRec: () => void; answerAfter: (fillId: string, v: AfterEffect) => Promise<void> }) {
+export function initInicio(opts: { signedIn: () => boolean; renderRec: () => void; answerAfter: (fillId: string, v: AfterEffect) => Promise<void> }) {
   function render() {
     if (currentRoute().view !== 'inicio') return;
     const v = current();
     document.querySelectorAll<HTMLElement>('.car-name').forEach((el) => (el.textContent = v ? v.name : 'Cadastrar carro'));
     const empty = !v;
-    const leg = opts.legacy();
     // "Comece por aqui" fica até o primeiro registro do carro: sem carro, cadastrar; com carro, abastecer ou trazer o histórico
     const fresh = !!v && !S.logs.some((f) => f.vehicle_id === v.id && !f.deleted_at) && !S.services.some((s) => s.vehicle_id === v.id && !s.deleted_at);
     $('home-empty').hidden = !empty && !fresh;
@@ -27,8 +26,8 @@ export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel
     if (empty) {
       $('home-empty').innerHTML =
         '<div class="card-head"><span>Comece por aqui</span></div>' +
-        (leg ? '<p class="hint">Encontramos ' + pl(leg.fuel_logs, 'abastecimento', 'abastecimentos') + ' do app anterior neste celular.</p><button type="button" class="btn primary" data-act="legacy">Trazer meus dados do app anterior</button>' : '<p class="hint"><b>1.</b> Cadastre seu carro. <b>2.</b> Registre cada ida ao posto em Abastecer, ou traga o que você já anotou.</p>') +
-        '<div class="btn-row start-btns"><button type="button" class="btn' + (leg ? '' : ' primary') + '" data-act="cars">Cadastrar carro</button><a class="btn" href="#/importar">Já tenho histórico</a></div>' + IMPORT_HINT;
+        '<p class="hint"><b>1.</b> Cadastre seu carro. <b>2.</b> Registre cada ida ao posto em Abastecer, ou traga o que você já anotou.</p>' +
+        '<div class="btn-row start-btns"><button type="button" class="btn primary" data-act="cars">Cadastrar carro</button><a class="btn" href="#/importar">Já tenho histórico</a></div>' + IMPORT_HINT;
     } else if (fresh) {
       $('home-empty').innerHTML =
         '<div class="card-head"><span>Próximo passo no ' + esc(v!.name) + '</span></div>' +

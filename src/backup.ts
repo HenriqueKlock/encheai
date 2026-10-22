@@ -1,4 +1,3 @@
-import Dexie from 'dexie';
 import { db, type FuelLog, type Service, type ServiceItem, type Vehicle } from './db';
 
 // Formato do arquivo de backup herdado da Caderneta do Carro (mantido para os dois apps lerem os mesmos arquivos)
@@ -62,44 +61,4 @@ export async function importBackup(raw: unknown): Promise<ImportResult> {
     }
   });
   return res;
-}
-
-/* ---------- dados do app anterior neste aparelho ---------- */
-// O app anterior roda no mesmo endereço (henriqueklock.github.io), então o banco dele neste aparelho
-// pode ser lido daqui. Só leitura: nada é alterado nele.
-const LEGACY_DB = 'caderneta-carro';
-
-export interface LegacyData { backup: Backup; places: Record<string, { label: string | null; lat: number | null; lon: number | null; data: Record<string, unknown>; deleted_at: string | null }>; counts: { vehicles: number; fuel_logs: number; services: number } }
-
-export async function legacyData(): Promise<LegacyData | null> {
-  try {
-    if (!(await Dexie.exists(LEGACY_DB))) return null;
-    const old = new Dexie(LEGACY_DB);
-    await old.open();
-    try {
-      const names = new Set(old.tables.map((t) => t.name));
-      const read = async (n: string) => (names.has(n) ? ((await old.table(n).toArray()) as any[]) : []);
-      const strip = (rows: any[]) => rows.map(({ _dirty, ...r }) => r);
-      const backup: Backup = {
-        app: BACKUP_APP,
-        version: BACKUP_VERSION,
-        exported_at: new Date().toISOString(),
-        vehicles: strip(await read('vehicles')),
-        fuel_logs: strip(await read('fuel_logs')),
-        // o anexo da OS ficou no servidor do app anterior: não vem junto
-        services: strip(await read('services')).map((r) => ({ ...r, attachment_path: null })),
-        service_items: strip(await read('service_items')),
-      };
-      const meta = names.has('meta') ? await old.table('meta').get('places') : null;
-      const places = (meta?.value ?? {}) as LegacyData['places'];
-      const live = <T extends { deleted_at?: string | null }>(r: T[]) => r.filter((x) => !x.deleted_at).length;
-      const counts = { vehicles: live(backup.vehicles), fuel_logs: live(backup.fuel_logs), services: live(backup.services) };
-      return counts.vehicles + counts.fuel_logs ? { backup, places, counts } : null;
-    } finally {
-      old.close();
-    }
-  } catch (e) {
-    console.warn('app anterior', e);
-    return null;
-  }
 }

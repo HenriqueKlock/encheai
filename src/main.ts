@@ -7,7 +7,7 @@ import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { startInstall } from './instalar';
 import { db, setMeta } from './db';
-import { importBackup, legacyData } from './backup';
+import { importBackup } from './backup';
 import { currentSession, onSyncStatus, scheduleSync, startAutoSync, supabase, type SyncStatus } from './sync';
 import { S, current, startStore, subscribe } from './store';
 import { startRouter } from './router';
@@ -46,7 +46,6 @@ function renderSync() {
 }
 
 /* ---------- telas ---------- */
-let legacyCount: number | null = null;
 const carros = initCarros();
 const postos = initPostos({ fillAt: (s, fuel, price) => fill.openAt(s, fuel, price) });
 const fill = initAbastecer(postos, () => carros.openVehicle(null));
@@ -57,7 +56,7 @@ initAutorizar();
 initRelato();
 const authorizing = captureAuthorization();
 const perfil = initPerfil({ status: () => syncStatus, statusText: () => syncText()[1] });
-initInicio({ signedIn: () => signedIn, legacy: () => (legacyCount ? { fuel_logs: legacyCount } : null), renderRec: postos.renderHome, answerAfter: (id, v) => fill.answerAfter(id, v) });
+initInicio({ signedIn: () => signedIn, renderRec: postos.renderHome, answerAfter: (id, v) => fill.answerAfter(id, v) });
 
 $('add-btn').addEventListener('click', () => fill.open(null));
 
@@ -69,10 +68,6 @@ document.addEventListener('click', async (e) => {
   if (!el) return;
   if (el.dataset.act === 'import') $<HTMLInputElement>('imp-file').click();
   if (el.dataset.act === 'fill') fill.open(null);
-  if (el.dataset.act === 'legacy') {
-    await perfil.importLegacy();
-    legacyCount = null;
-  }
 });
 $<HTMLInputElement>('imp-file').addEventListener('change', async (e) => {
   const input = e.target as HTMLInputElement;
@@ -109,12 +104,10 @@ onSyncStatus((st) => {
 
 async function boot() {
   signedIn = !!(await currentSession());
-  const leg = await legacyData();
-  legacyCount = leg && !(await db.fuel_logs.count()) ? leg.counts.fuel_logs : null;
   startRouter();
   // pedido de conexão do Claude: vai direto para a autorização, sem boas-vindas
   if (authorizing || pendingAuthorization()) return;
-  if (await shouldWelcome(signedIn)) showWelcome({ legacyCount, onClose: () => {} });
+  if (await shouldWelcome(signedIn)) showWelcome({ onClose: () => {} });
 }
 
 supabase.auth.onAuthStateChange((event) => {

@@ -1,7 +1,7 @@
 // Perfil: conta e sincronização, contribuição com a rede, casa e trabalho, carros,
-// dados (trazer do app anterior, backup, baixar), privacidade e exclusão da conta.
+// dados (backup, baixar), privacidade e exclusão da conta.
 import { db, setMeta } from '../db';
-import { exportBackup, importBackup, legacyData, type LegacyData } from '../backup';
+import { exportBackup } from '../backup';
 import { TERMS_VERSION } from '../config';
 import { currentSession, deleteAccount, setContribute, setPlace, signOut, supabase, sync, type PlaceKind, type SyncStatus } from '../sync';
 import { S, activeVehicles, current, subscribe } from '../store';
@@ -16,8 +16,6 @@ declare const __BUILD__: string;
 
 export function initPerfil(opts: { status: () => SyncStatus; statusText: () => string }) {
   let email: string | null = null;
-  let legacy: LegacyData | null = null;
-  let legacyChecked = false;
   // apps conectados pelo OAuth (o Claude, pelo conector)
   let grants: { id: string; name: string; at: string }[] = [];
   let grantsFor: string | null = null;
@@ -39,12 +37,6 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
 
   async function refreshSession() {
     email = (await currentSession())?.user.email ?? null;
-  }
-
-  async function checkLegacy() {
-    legacyChecked = true;
-    legacy = await legacyData();
-    render();
   }
 
   function pushCard() {
@@ -104,7 +96,6 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     const data =
       apps +
       '<div class="list-card">' +
-      (legacy ? '<button type="button" class="row simple" data-p="legacy"><span class="mid"><span class="a">Trazer meus dados do app anterior</span><span class="b">' + pl(legacy.counts.vehicles, 'carro', 'carros') + ', ' + pl(legacy.counts.fuel_logs, 'abastecimento', 'abastecimentos') + ', ' + pl(legacy.counts.services, 'manutenção', 'manutenções') + ' neste celular</span></span><span></span><span class="chev">' + ICON.chev + '</span></button>' : '') +
       '<button type="button" class="row simple" data-p="export"><span class="mid"><span class="a">Baixar meus dados</span><span class="b">Arquivo JSON com carros e registros</span></span><span></span><span class="chev">' + ICON.chev + '</span></button>' +
       '<a class="row simple" href="#/importar"><span class="mid"><span class="a">Trazer histórico</span><span class="b">Planilha, a sua IA, o Claude ou um backup; confere antes de gravar</span></span><span></span><span class="chev">' + ICON.chev + '</span></a>' +
       '<button type="button" class="row simple" data-act="relato"><span class="mid"><span class="a">Relatar problema ou sugestão</span><span class="b">Vai direto para quem faz o app</span></span><span></span><span class="chev">' + ICON.chev + '</span></button>' +
@@ -124,7 +115,6 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
 
     body.innerHTML = account + nav + data + danger + device;
     if (!email) renderLogin($('p-login'));
-    if (!legacyChecked) checkLegacy();
   }
 
   $('perfil-body').addEventListener('change', async (e) => {
@@ -161,7 +151,6 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     if (p === 'out') { await disablePush(); push = null; await signOut(); toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
     if (p === 'export') return download();
     if (p === 'install') { if (await install()) toast('Instalado! Procure o Enche Aí na tela inicial.'); return render(); }
-    if (p === 'legacy') return importLegacy();
     if (p === 'delete') {
       $<HTMLInputElement>('del-confirm').value = '';
       $<HTMLButtonElement>('del-go').disabled = true;
@@ -191,20 +180,6 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     toast('Arquivo baixado');
   }
 
-  async function importLegacy() {
-    const d = legacy ?? (await legacyData());
-    if (!d) return toast('Não encontrei dados do app anterior neste celular.');
-    const res = await importBackup(d.backup);
-    for (const k of ['casa', 'trabalho', 'rota'] as PlaceKind[]) {
-      const p = d.places[k];
-      if (p && !p.deleted_at && !S.places[k]) await setPlace(k, { label: p.label, lat: p.lat, lon: p.lon, data: p.data ?? {} });
-    }
-    if (!current()) {
-      const first = (await db.vehicles.toArray()).find((v) => !v.archived && !v.deleted_at);
-      if (first) await setMeta('current_vehicle', first.id);
-    }
-    toast('Trazido: ' + pl(res.vehicles, 'carro', 'carros') + ', ' + pl(res.fuel_logs, 'abastecimento', 'abastecimentos') + ', ' + pl(res.services, 'manutenção', 'manutenções'));
-  }
 
   // excluir conta
   $('del-confirm').addEventListener('input', () => {
@@ -230,7 +205,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
   subscribe(render);
   onInstallChange(render);
   onShow('perfil', () => render());
-  return { render, importLegacy, legacyInfo: () => legacy, checkLegacy };
+  return { render };
 }
 
 const PIN = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
