@@ -7,7 +7,7 @@ import {
   type Recommendation, type Station, type StationLive, type StationRow, type StationsFile, type StationUse,
 } from '../postos';
 import { gps, loadStations, route, type FoundPlace, type Route } from '../lugares';
-import { currentSession, googlePhoto, googlePlaces, googleReviews, setPlace, stationPlaces, votePlace, type GoogleReviews, type PlaceLinks, type Places } from '../sync';
+import { currentSession, googleNota, googlePhoto, googlePlaces, googleReviews, setPlace, stationPlaces, votePlace, type GoogleReviews, type PlaceLinks, type Places } from '../sync';
 import { fetchNetwork, invalidateNetwork, network } from '../rede';
 import { plausible, reportPrices, reportedAsOwn } from '../precos';
 import { getMeta, setMeta, stamp, db, type FuelLog } from '../db';
@@ -72,13 +72,17 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
 
   /* ---------- Google: lugares ligados aos postos da ANP (nome, nota, foto, ponto exato) ---------- */
   const gmatch = new Map<string, GoogleMatch>();
+  /** Nota do Google por posto, só para mostrar na ficha: não entra mais na conta da confiabilidade nem no sugerido. */
   const google = new Map<string, { rating: number; count: number }>();
+  const NO_G = new Map<string, { rating: number; count: number }>();
   const gTried = new Set<string>();
   /** Postos sendo procurados no Google agora (só eles mostram "procurando"). */
   const gPending = new Set<string>();
   /** O que dizer quando não há nota do Google para o posto. */
   const gStatus = (c: string, short: boolean) =>
     placeOf.has(c) && placeOf.get(c) === null ? (short ? 'fora do Google' : 'não está no Google')
+      : notaPending.has(c) ? 'buscando…'
+      : gmatch.has(c) && notaBlocked && !notaNone.has(c) ? (short ? 'hoje não' : notaBlocked)
       : gmatch.has(c) ? 'sem nota no Google'
       : gBlocked && !(placeOf.get(c) && !lugarBlocked) ? (short ? 'indisponível' : gBlocked)
       : gPending.has(c) ? 'procurando…'
@@ -98,6 +102,49 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     for (const [c, g] of m) {
       gmatch.set(c, g);
       if (g.rating != null) google.set(c, { rating: g.rating, count: g.count });
+      else applyNota(c, g.id);
+    }
+  }
+
+  /*
+   * Nota do Google: chamada própria (a faixa grátis dela é a menor), só quando a ficha abre, uma vez por dia
+   * por posto. Não entra na confiabilidade nem no sugerido; aparece na ficha como informação.
+   */
+  const N_KEY = 'google_notas_v1';
+  type NCache = Record<string, { at: number; rating: number | null; count: number }>;
+  let ncache: NCache = {};
+  let notaBlocked = '';
+  const notaPending = new Set<string>();
+  /** Postos que o Google respondeu sem nota (hoje). */
+  const notaNone = new Set<string>();
+  function applyNota(c: string, id: string) {
+    const e = ncache[id];
+    if (!e || !fresh(e.at)) return false;
+    if (e.rating != null) google.set(c, { rating: e.rating, count: e.count });
+    else notaNone.add(c);
+    return true;
+  }
+  async function loadNota(s: Station) {
+    const gm = gmatch.get(s.c);
+    if (!gm || google.has(s.c) || notaNone.has(s.c) || applyNota(s.c, gm.id)) return;
+    if (notaBlocked || notaPending.has(s.c) || navigator.onLine === false || !(await currentSession())) return;
+    notaPending.add(s.c);
+    try {
+      const d = await googleNota(gm.id);
+      if (d) {
+        ncache = Object.fromEntries(Object.entries(ncache).filter(([, e]) => fresh(e.at)));
+        ncache[gm.id] = { at: Date.now(), rating: d.rating, count: d.count };
+        await setMeta(N_KEY, ncache);
+        applyNota(s.c, gm.id);
+      }
+    } catch (e) {
+      const res = (e as { context?: Response })?.context;
+      if (res?.status === 429) {
+        try { notaBlocked = (await res.json()).error; } catch { notaBlocked = 'O limite gratuito do Google de hoje acabou.'; }
+      } else console.warn('google nota', e);
+    } finally {
+      notaPending.delete(s.c);
+      if (shown?.c === s.c && gmatch.get(s.c)?.id === gm.id) rerenderPosto(s);
     }
   }
   const googleDone = new Set<string>();
@@ -130,14 +177,18 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (file) {
       links = await stationPlaces();
       placeOf = links.place;
+      ncache = await getMeta<NCache>(N_KEY, {});
       await restoreGoogle();
     }
     return file;
   }
 
-  /* Cache do Google no aparelho: cada área (e cada posto procurado) é buscada no máximo uma vez por semana. */
-  const G_TTL = 7 * 86400000;
-  const G_KEY = 'google_cache_v2';
+  /*
+   * Cache do Google no aparelho só até o fim do dia: cada área (e cada posto procurado) é buscada uma vez por
+   * dia, e o que o Google devolveu não fica guardado de um dia para o outro (só o place_id pode ficar).
+   */
+  const G_KEY = 'google_cache_v3';
+  const fresh = (at: number) => at >= new Date().setHours(0, 0, 0, 0);
   type GCache = Record<string, { at: number; places: GoogleStation[] }>;
   let gcache: GCache | null = null;
   /** Busca por perto e por texto bloqueada (cota do app ou do Google); a nota pelo id e as fotos têm a própria. */
@@ -147,19 +198,19 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   async function gGet(key: string): Promise<GoogleStation[] | null> {
     gcache ??= await getMeta<GCache>(G_KEY, {});
     const e = gcache[key];
-    return e && Date.now() - e.at < G_TTL ? e.places : null;
+    return e && fresh(e.at) ? e.places : null;
   }
   async function gPut(key: string, places: GoogleStation[]) {
     gcache ??= await getMeta<GCache>(G_KEY, {});
     gcache[key] = { at: Date.now(), places };
-    const keys = Object.keys(gcache).filter((k) => Date.now() - gcache![k].at < G_TTL).sort((a, b) => gcache![b].at - gcache![a].at);
+    const keys = Object.keys(gcache).filter((k) => fresh(gcache![k].at)).sort((a, b) => gcache![b].at - gcache![a].at);
     gcache = Object.fromEntries(keys.slice(0, 80).map((k) => [k, gcache![k]]));
     await setMeta(G_KEY, gcache);
   }
   /** Ao abrir o app, religa o que já foi buscado no Google (sem nova consulta). */
   async function restoreGoogle() {
     gcache ??= await getMeta<GCache>(G_KEY, {});
-    const all = Object.values(gcache).filter((e) => Date.now() - e.at < G_TTL).flatMap((e) => e.places);
+    const all = Object.values(gcache).filter((e) => fresh(e.at)).flatMap((e) => e.places);
     if (!all.length || !file) return;
     googleOn = true;
     const ids = new Set(all.map((g) => g.id));
@@ -279,7 +330,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return true;
   }
   function compute(b: Base, filtered = true): { rows: StationRow[]; rec: Recommendation } {
-    const all = stationsFor(stations(), b, model(), own(), todayISO(), google, network(), mine());
+    const all = stationsFor(stations(), b, model(), own(), todayISO(), NO_G, network(), mine());
     const rows = filtered ? all.filter(passes) : all;
     return { rows, rec: recommend(rows) };
   }
@@ -501,7 +552,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return null;
   }
   function rowFor(s: Station, b: Base): StationRow {
-    return stationsFor([s], b.kind === 'ponto' ? { ...b, radiusKm: 9999 } : { ...b, detourKm: 9999 }, model(), own(), todayISO(), google, network(), mine())[0];
+    return stationsFor([s], b.kind === 'ponto' ? { ...b, radiusKm: 9999 } : { ...b, detourKm: 9999 }, model(), own(), todayISO(), NO_G, network(), mine())[0];
   }
 
   function myCard(b: Base, rec: Recommendation) {
@@ -675,7 +726,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const at = rs.center;
     const bb = bboxAround(at, 25);
     const cands = stations().filter((s) => s.la > bb.s && s.la < bb.n && s.lo > bb.w && s.lo < bb.e && words.every((w) => norm(nm(s) + ' ' + s.n + ' ' + s.e + ' ' + s.br + ' ' + s.m + ' ' + s.b).includes(w)));
-    return stationsFor(cands, { kind: 'ponto', at, radiusKm: 25 }, model(), own(), todayISO(), google, network(), mine()).sort((a, b) => a.distKm - b.distKm).slice(0, 30);
+    return stationsFor(cands, { kind: 'ponto', at, radiusKm: 25 }, model(), own(), todayISO(), NO_G, network(), mine()).sort((a, b) => a.distKm - b.distKm).slice(0, 30);
   }
   function searchBody(rs: Resolved, rec: Recommendation) {
     const found = searchRows(rs);
@@ -737,8 +788,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   function sourcesNote() {
     if (!file) return '';
     const w = file.fontes.lpc_semanas[0];
-    const g = gBlocked ? esc(gBlocked) + ' As notas já buscadas continuam valendo.' : googleOn === true ? 'Notas do Google atualizadas uma vez por semana.' : googleOn === false ? 'Notas do Google ainda não configuradas.' : '';
-    return '<p class="foot-note">Preços: o que a rede pagou nos últimos 7 dias, os seus abastecimentos e a pesquisa semanal da ANP' + (w ? ' (mais recente: ' + dm(w[0]) + ' a ' + dm(w[1]) + ')' : '') + '. Sugerido: o menor custo para rodar (preço, combustível, desvio e rendimento medido), pesado pela confiabilidade (fiscalização da ANP nos últimos 5 anos, notas do Google, avaliações da rede e as suas) e pela idade do preço; o menor preço aparece à parte. ' + g + ' Distâncias aproximadas.</p>';
+    const g = gBlocked ? esc(gBlocked) + ' Os nomes já buscados hoje continuam valendo.' : googleOn === true ? 'Nomes e fotos do Google buscados uma vez por dia; a nota do Google aparece na ficha de cada posto.' : googleOn === false ? 'Google ainda não configurado.' : '';
+    return '<p class="foot-note">Preços: o que a rede pagou nos últimos 7 dias, os seus abastecimentos e a pesquisa semanal da ANP' + (w ? ' (mais recente: ' + dm(w[0]) + ' a ' + dm(w[1]) + ')' : '') + '. Sugerido: o menor custo para rodar (preço, combustível, desvio e rendimento medido), pesado pela confiabilidade (fiscalização da ANP nos últimos 5 anos, avaliações da rede e as suas) e pela idade do preço; o menor preço aparece à parte. ' + g + ' Distâncias aproximadas.</p>';
   }
 
   const folha = initFolha($('p-sheet'), $('p-grab'), $('p-body'), () => {
@@ -840,7 +891,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       ? mapMode === 'preco' ? 'Nenhum posto daqui tem preço. Veja por avaliação.' : ''
       : (mapMode === 'preco'
         ? pl(picks.length, 'opção mais em conta', 'opções mais em conta') + (stale ? ' · em cinza, preço com mais de 30 dias' : '')
-        : pl(picks.length, 'posto mais confiável', 'postos mais confiáveis') + ' · ANP, Google e rede') + (hidden ? ' · aproxime para ver ' + (hidden === 1 ? 'mais 1' : 'mais ' + hidden) : '') + ' · toque para abrir';
+        : pl(picks.length, 'posto mais confiável', 'postos mais confiáveis') + ' · ANP e rede') + (hidden ? ' · aproxime para ver ' + (hidden === 1 ? 'mais 1' : 'mais ' + hidden) : '') + ' · toque para abrir';
   }
   $('p-map-mode').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-mode]');
@@ -926,6 +977,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     openSheet('posto-sheet');
     const gm = gmatch.get(s.c);
     if (!gm && googleOn !== false && !gTried.has(s.c)) lookupStation(s);
+    if (gm) void loadNota(s);
     if (gm?.photo) showPhoto(gm.photo);
     fetchNetwork([s.c]).then((ch) => ch && shown?.c === s.c && renderPosto(s));
     setTimeout(() => showMap(s), 280);
@@ -1013,7 +1065,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       (rel.netWarn ? '<p class="rec-warn">' + ICON.warn + '<span>' + (rel.netWarn === 'rendimento' ? 'Os tanques daqui rendem abaixo do normal para quem usa o app.' : rel.netWarn === 'falhas' ? 'Vários relatos de carro falhando depois de abastecer aqui.' : 'Muita gente disse que a bomba não marcou certo.') + ' A nota fica limitada a “atenção”.</span></p>' : '') +
       '<div class="rel-part"><div class="h"><span>Fiscalização da ANP (5 anos)</span><b>' + fmt(rel.anp, 1) + '</b></div><div class="bar"><i style="width:' + Math.round((rel.anp / 5) * 100) + '%"></i></div><span class="hint">' + esc(anpTxt) + '</span></div>' +
       (ev.length ? '<ul class="ev-list">' + ev.slice(0, 6).map(([d, t, txt]) => '<li><span class="d">' + dm(d) + '/' + d.slice(2, 4) + '</span><span><b>' + EVENT_LABEL[t] + '</b>' + (txt ? ' · ' + esc(txt.replace(/^(Notificação|MRC)\s*-\s*(PR ?Comb\s*-\s*)?/i, '')) : '') + '</span></li>').join('') + '</ul>' : '') +
-      '<details class="more"><summary>Como a nota é calculada<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary><p class="hint">Começa em 5 e cada ocorrência da ANP nos últimos 5 anos desconta, mais quanto mais recente e mais grave. Infração de bomba, volume ou qualidade nos últimos 12 meses limita a nota em 2,5 e tira o posto da recomendação. A média do Google entra com peso de 35%, puxada para 4,0 quando há poucas avaliações. Rendimento medido abaixo de 95% ou bomba mal avaliada limitam a nota a 3,4. O rendimento medido também entra no custo por km da recomendação.</p></details></div>';
+      '<details class="more"><summary>Como a nota é calculada<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary><p class="hint">Começa em 5 e cada ocorrência da ANP nos últimos 5 anos desconta, mais quanto mais recente e mais grave. Infração de bomba, volume ou qualidade nos últimos 12 meses limita a nota em 2,5 e tira o posto da recomendação. A nota do Google aparece à parte e não entra na conta. Rendimento medido abaixo de 95% ou bomba mal avaliada limitam a nota a 3,4. O rendimento medido também entra no custo por km da recomendação.</p></details></div>';
 
     // Você aqui
     const mine = S.logs.filter((f) => f.station_id === s.c).sort((a, b2) => b2.date.localeCompare(a.date));
@@ -1075,12 +1127,16 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         dp ? { p: Math.round(((dp.normal + dp.melhor) / dp.n) * 100), label: 'carro sem problema' } : null,
         share(rat?.banheiro, 'banheiro'),
       ].filter((c): c is { p: number; label: string } => !!c);
-      const gSub = g ? g.count.toLocaleString('pt-BR') + ' notas' : gStatus(s.c, true);
+      const gSub = g ? g.count.toLocaleString('pt-BR') + ' notas' : gStatus(s.c, false);
       const whyBox =
         '<div class="card why2"><b class="why2-t">De onde vem o ' + fmt(rel.score, 1) + '</b><div class="why2-tiles">' +
         tile('ANP', fmt(rel.anp, 1), rel.infractions ? pl(rel.infractions, 'infração', 'infrações') : s.f ? 'sem infração' : 'sem registro') +
-        (gm ? '<button type="button" class="tl2 tl2-btn" data-grv aria-expanded="' + (reviewsOpen === s.c) + '"><span>Google ' + CHEV_S + '</span><b>' + (g ? fmt(g.rating, 1) : '–') + '</b><span>' + gSub + '</span></button>' : tile('Google', g ? fmt(g.rating, 1) : '–', gSub)) +
         tile('Quem abasteceu', stars ? fmt(stars.avg, 1) + '★' : '–', stars ? pl(stars.n, 'nota', 'notas') : rat?.n ? pl(rat.n, 'avaliação', 'avaliações') : 'sem notas') + '</div>' +
+        // Google: informação à parte (não entra no número acima)
+        (gm
+          ? '<button type="button" class="g2line" data-grv aria-expanded="' + (reviewsOpen === s.c) + '"><span class="g2-k">No Google</span><b>' + (g ? fmt(g.rating, 1) + '★' : '–') + '</b><span class="g2-s">' + esc(g ? '(' + g.count.toLocaleString('pt-BR') + ')' : gStatus(s.c, true)) + '</span><span class="g2-go">Avaliações' + CHEV_S + '</span></button>'
+          : '<div class="g2line off"><span class="g2-k">No Google</span><b>–</b><span class="g2-s">' + esc(gStatus(s.c, true)) + '</span></div>') +
+        '<p class="g2-note">' + (gm && !g && notaBlocked && !notaNone.has(s.c) ? esc(notaBlocked) + ' ' : '') + 'A nota do Google é só informação: não entra no ' + fmt(rel.score, 1) + ' nem no sugerido.</p>' +
         (chips.length ? '<div class="why2-chips">' + chips.map((c) => '<span class="' + (c.p >= 70 ? 'ok' : 'warn') + '">' + c.label + ' ' + c.p + '%</span>').join('') + '</div>' : '') +
         (rel.netWarn ? '<p class="rec-warn">' + ICON.warn + '<span>' + (rel.netWarn === 'rendimento' ? 'Os tanques daqui rendem abaixo do normal para quem usa o app.' : rel.netWarn === 'falhas' ? 'Vários relatos de carro falhando depois de abastecer aqui.' : 'Muita gente disse que a bomba não marcou certo.') + '</span></p>' : '') +
         (ev.length ? '<details class="more"><summary>Fiscalização da ANP (' + ev.length + ')<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary><ul class="ev-list">' + ev.slice(0, 6).map(([d, t, txt]) => '<li><span class="d">' + dm(d) + '/' + d.slice(2, 4) + '</span><span><b>' + EVENT_LABEL[t] + '</b>' + (txt ? ' · ' + esc(txt.replace(/^(Notificação|MRC)\s*-\s*(PR ?Comb\s*-\s*)?/i, '')) : '') + '</span></li>').join('') + '</ul></details>' : '') +
@@ -1149,6 +1205,11 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       try {
         const d = await googleReviews(gm.id);
         reviews.set(gm.id, d ?? 'erro');
+        if (d) {
+          ncache[gm.id] = { at: Date.now(), rating: d.rating, count: d.count };
+          await setMeta(N_KEY, ncache);
+          applyNota(st.c, gm.id);
+        }
       } catch (e) {
         // erro só das avaliações: mostra no painel, sem desligar o resto do Google no app
         reviews.set(gm.id, 'erro');
@@ -1250,14 +1311,26 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
 
   /** Link temporário da foto (do Google), só na memória; null = sem foto ou não carregou. */
   const photoUris = new Map<string, string | null>();
+  const P_KEY = 'google_fotos_v1';
   const photoLoading = new Set<string>();
   async function showPhoto(ph: { name: string }) {
     let uri = photoUris.get(ph.name);
+    if (uri === undefined) {
+      // o link da foto vale o dia (a faixa grátis de fotos é pequena): não busca de novo a cada ficha
+      const day = await getMeta<Record<string, { at: number; uri: string }>>(P_KEY, {});
+      const e = day[ph.name];
+      if (e && fresh(e.at)) { uri = e.uri; photoUris.set(ph.name, uri); }
+    }
     if (uri === undefined) {
       if (photoBlocked || photoLoading.has(ph.name)) return;
       photoLoading.add(ph.name);
       try {
         uri = await googlePhoto(ph.name);
+        if (uri) {
+          const day = Object.fromEntries(Object.entries(await getMeta<Record<string, { at: number; uri: string }>>(P_KEY, {})).filter(([, x]) => fresh(x.at)));
+          day[ph.name] = { at: Date.now(), uri };
+          await setMeta(P_KEY, day);
+        }
       } catch (e) {
         await gError(e, 'foto');
         uri = null;
@@ -1283,7 +1356,14 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       b.append(img);
       fig.querySelector('.ph')?.replaceWith(b);
     };
-    img.onerror = () => { photoUris.set(ph.name, null); fig.remove(); };
+    img.onerror = async () => {
+      // link vencido: esquece e não tenta de novo nesta sessão
+      photoUris.set(ph.name, null);
+      fig.remove();
+      const day = await getMeta<Record<string, { at: number; uri: string }>>(P_KEY, {});
+      delete day[ph.name];
+      await setMeta(P_KEY, day);
+    };
     img.src = uri;
   }
   /** Visual novo: foto do posto (do Google) logo abaixo do nome, com o crédito que o Google exige. */
@@ -1435,6 +1515,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   }
   function afterLookup(s: Station) {
     gPending.delete(s.c);
+    if (gmatch.has(s.c)) void loadNota(s);
     if (shown?.c === s.c) {
       renderPosto(s);
       const gm = gmatch.get(s.c);
@@ -1476,7 +1557,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const gm = gmatch.get(s.c);
     if (gm) fixCands.set(gm.id, { id: gm.id, name: gm.name, address: gm.address ?? '', lat: gm.lat, lon: gm.lon, rating: gm.rating, count: gm.count, photo: gm.photo });
     gcache ??= await getMeta<GCache>(G_KEY, {});
-    add(Object.values(gcache).filter((e) => Date.now() - e.at < G_TTL).flatMap((e) => e.places).filter((g) => haversineKm({ lat: s.la, lon: s.lo }, g) < 0.6));
+    add(Object.values(gcache).filter((e) => fresh(e.at)).flatMap((e) => e.places).filter((g) => haversineKm({ lat: s.la, lon: s.lo }, g) < 0.6));
     fixErr = '';
     if (typed) {
       try {
@@ -1742,7 +1823,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   }
   /** Melhor preço conhecido de um posto para um combustível (seu, da rede ou da ANP). */
   function priceAt(s: Station, fuel: Fuel): PricePoint | null {
-    const r = stationsFor([s], { kind: 'ponto', at: { lat: s.la, lon: s.lo }, radiusKm: 1 }, { ...carInfo().model, fuels: [fuel] }, own(), todayISO(), google, network())[0];
+    const r = stationsFor([s], { kind: 'ponto', at: { lat: s.la, lon: s.lo }, radiusKm: 1 }, { ...carInfo().model, fuels: [fuel] }, own(), todayISO(), NO_G, network())[0];
     return fuel === 'gasolina' ? r.gas : r.eth;
   }
   function setHere(p: LatLon) {

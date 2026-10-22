@@ -454,6 +454,15 @@ async function syncPlaces() {
 
 /* ---------- Google Places (opcional: só funciona com a chave configurada no servidor) ---------- */
 export type GoogleMode = 'nearby' | 'posto' | 'address' | 'autocomplete' | 'details' | 'lugar';
+/** Nota e número de avaliações de um lugar do Google (chamada própria: é a que tem a faixa grátis menor). */
+export async function googleNota(id: string): Promise<{ rating: number | null; count: number } | null> {
+  if (!(await currentSession())) return null;
+  const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('O Google demorou para responder.')), 12000));
+  const { data, error } = await Promise.race([supabase.functions.invoke('postos-google', { body: { mode: 'nota', id } }), timeout]);
+  if (error) throw error;
+  const d = data as { configured: boolean; rating: number | null; count: number };
+  return d.configured ? { rating: d.rating, count: d.count } : null;
+}
 /** Link temporário (do Google) para a foto de um lugar; null quando não há. */
 export async function googlePhoto(name: string): Promise<string | null> {
   if (!(await currentSession())) return null;

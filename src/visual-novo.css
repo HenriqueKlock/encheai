@@ -589,6 +589,19 @@
 
 /* ---------- computador (tela larga): navegação na lateral, Postos com lista ao lado do mapa,
    folhas como janelas no centro. No celular nada disto vale. ---------- */
+/* ficha: nota do Google à parte (não entra na confiabilidade) */
+.g2line { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: baseline; gap: 4px 10px; padding: 12px 14px; border-radius: 16px; background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--field); }
+.g2line.off { cursor: default; box-shadow: none; }
+.g2line[aria-expanded="true"] { box-shadow: inset 0 0 0 2px var(--link); }
+.g2line:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.g2line .g2-k { font-size: 13px; font-weight: 600; color: var(--muted); }
+.g2line b { font-family: var(--display); font-weight: 800; font-size: 20px; letter-spacing: -.02em; }
+.g2line .g2-s { font-size: 13px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g2line .g2-go { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 600; color: var(--link); }
+.g2-note { margin: -2px 2px 0; font-size: 12px; color: var(--faint); }
+.why2-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 380px) { .g2line { grid-template-columns: auto auto minmax(0, 1fr); } .g2line .g2-go { grid-column: 1 / -1; } }
+
 /* ficha: foto do posto (Google) abaixo do nome; toque abre em tela cheia */
 .ps2-photo { margin: 0; position: relative; }
 .ps2-photo .ph, .ps2-ph { display: block; width: 100%; height: 148px; border-radius: 18px; background: var(--mata-2); overflow: hidden; }

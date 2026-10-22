@@ -2,7 +2,8 @@
 // Guarda só o par CNPJ → place_id (os termos do Google permitem guardar o place_id sem prazo; nota, nome e
 // avaliações não são guardados). Cada posto é conferido de novo a cada 30 dias, em lotes, para caber na
 // cota gratuita. O app usa o place_id para casar a busca por perto sem adivinhação e pedir a nota do posto
-// direto pelo id. Postos corrigidos pelas pessoas no app (source = 'pessoas') ficam como estão.
+// direto pelo id. Roda às 03:17 de Brasília, perto do fim do dia do Google (Pacífico): usa a sobra da faixa
+// grátis do dia, que o app não gastou. Postos corrigidos pelas pessoas no app (source = 'pessoas') ficam como estão.
 // Só aceita chamada com o cabeçalho x-cron igual ao segredo de push_keys (só o banco conhece).
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { brandConflict, nameTokens, rankForStation, sameSpot, type GoogleStation, type StationLike } from './casar.ts';
@@ -12,7 +13,10 @@ const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') ?? '';
 const DATA = 'https://henriqueklock.github.io/encheai/dados/postos-SC.json';
 const REGIAO = ['florianopolis', 'sao jose', 'palhoca', 'biguacu', 'santo amaro da imperatriz', 'governador celso ramos', 'antonio carlos'];
-const LOTE = 80;
+const LOTE = 40; // até 80 buscas por noite, metade do que a faixa grátis permite por dia (o resto fica para o app)
+/** Desempates por número de avaliações por rodada (a faixa grátis da nota é pequena e o app também usa). */
+const DESEMPATES = 5;
+let desempates = 0;
 const REVER_DIAS = 30;
 const admin = { apikey: SERVICE, Authorization: 'Bearer ' + SERVICE, 'Content-Type': 'application/json' };
 const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -30,8 +34,19 @@ function timingSafe(a: string, b: string) {
   return d === 0;
 }
 
+/**
+ * Custo zero: o mesmo orçamento do app (consume_google_budget, faixa grátis de cada SKU no mês). Sem saldo,
+ * a rodada para como se o Google tivesse recusado e continua no dia seguinte.
+ */
+const BUDGET: Record<string, { day: number; month: number }> = { text_pro: { day: 150, month: 4750 }, details_ent: { day: 30, month: 950 } };
+async function budget(sku: 'text_pro' | 'details_ent') {
+  const ok = await rest('rpc/consume_google_budget', { method: 'POST', body: JSON.stringify({ p_sku: sku, p_day_max: BUDGET[sku].day, p_month_max: BUDGET[sku].month }) });
+  if (ok !== true) throw new Error('google 429 limite gratuito (' + sku + ')');
+}
+
 /** Busca por texto, só postos de combustível perto do ponto da ANP (SKU Pro: sem nota nem foto). */
 async function search(q: string, s: StationLike): Promise<GoogleStation[]> {
+  await budget('text_pro');
   const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': KEY, 'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.formattedAddress,places.businessStatus' },
@@ -44,6 +59,7 @@ async function search(q: string, s: StationLike): Promise<GoogleStation[]> {
 
 /** Quantas avaliações e se está aberto (Place Details; só nos empates, que são raros). */
 async function popularity(id: string): Promise<{ count: number; status: string }> {
+  await budget('details_ent');
   const r = await fetch('https://places.googleapis.com/v1/places/' + id, { headers: { 'X-Goog-Api-Key': KEY, 'X-Goog-FieldMask': 'userRatingCount,businessStatus' } });
   if (!r.ok) throw new Error('google ' + r.status + ' ' + (await r.text()).slice(0, 200));
   const p = await r.json();
@@ -56,7 +72,7 @@ type Cand = { g: GoogleStation; v: number; count?: number };
  * trocou de nome ou de bandeira e o Google ficou com o antigo ao lado do novo), fica com o que está aberto
  * e tem mais avaliações. O nome antigo costuma bater melhor com a ANP, que demora a atualizar.
  */
-async function order(cands: Cand[], s: StationLike): Promise<Cand[]> {
+async function order(cands: Cand[], s: StationLike, cur?: string | null): Promise<Cand[]> {
   const open = cands.filter((c) => c.g.status !== 'CLOSED_PERMANENTLY');
   if (open.length < 2) return open;
   const top = open[0];
@@ -64,10 +80,20 @@ async function order(cands: Cand[], s: StationLike): Promise<Cand[]> {
   const twins = open.filter((c) => c !== top && sameSpot(top.g, c.g, s) && !brandConflict(c.g, s) && c.v >= top.v - 2.5).slice(0, 2);
   if (!twins.length) return open;
   const group: Cand[] = [top, ...twins];
-  for (const c of group) {
-    const p = await popularity(c.g.id);
-    c.count = p.count;
-    if (p.status) c.g.status = p.status;
+  // sem desempate hoje: no mesmo ponto, fica com o cadastro que o posto já tinha (não volta para o antigo)
+  const keep = () => { const c = group.find((x) => x.g.id === cur); return c ? [c, ...open.filter((x) => x !== c)] : open; };
+  if (desempates >= DESEMPATES) return keep();
+  desempates++;
+  try {
+    for (const c of group) {
+      const p = await popularity(c.g.id);
+      c.count = p.count;
+      if (p.status) c.g.status = p.status;
+    }
+  } catch (e) {
+    // sem saldo grátis para o desempate hoje: fica com a ordem pela comparação
+    if (/limite gratuito/.test(String(e))) return keep();
+    throw e;
   }
   const rank = (c: Cand) => (c.g.status === 'OPERATIONAL' || !c.g.status ? 0 : 1);
   group.sort((a, b) => rank(a) - rank(b) || (b.count ?? 0) - (a.count ?? 0) || b.v - a.v);
@@ -80,7 +106,7 @@ type Owner = { station_id: string; score: number };
  * com um posto só: se outro posto já tem o lugar com nota maior, tenta o próximo candidato; se tem nota
  * menor, este posto fica com o lugar e o outro volta para a fila (é revisto na próxima rodada).
  */
-async function link(s: StationLike & { br?: string; m: string }, owners: Map<string, Owner>, log?: unknown[]): Promise<{ id: string; score: number; evict?: string } | null> {
+async function link(s: StationLike & { br?: string; m: string }, owners: Map<string, Owner>, log?: unknown[], cur?: string | null): Promise<{ id: string; score: number; evict?: string } | null> {
   const pick = (cands: Cand[]) => {
     log?.push(cands.map((c) => ({ id: c.g.id, name: c.g.name, address: c.g.address, status: c.g.status, score: Math.round(c.v * 100) / 100, count: c.count })));
     for (const { g, v } of cands) {
@@ -90,8 +116,8 @@ async function link(s: StationLike & { br?: string; m: string }, owners: Map<str
     }
     return null;
   };
-  let hit = pick(await order(rankForStation(await search('posto de combustível ' + s.e + ', ' + (s.br ? s.br + ', ' : '') + s.m + ' - SC', s), s), s));
-  if (!hit && nameTokens(s.n).length) hit = pick(await order(rankForStation(await search(s.n + ', ' + s.m + ' - SC', s), s), s));
+  let hit = pick(await order(rankForStation(await search('posto de combustível ' + s.e + ', ' + (s.br ? s.br + ', ' : '') + s.m + ' - SC', s), s), s, cur));
+  if (!hit && nameTokens(s.n).length) hit = pick(await order(rankForStation(await search(s.n + ', ' + s.m + ' - SC', s), s), s, cur));
   return hit;
 }
 
@@ -103,6 +129,7 @@ Deno.serve(async (req) => {
     const secret: string = (await rest('push_keys?id=eq.1&select=cron_secret'))?.[0]?.cron_secret ?? '';
     if (!secret || given.length !== secret.length || !timingSafe(given, secret)) return json(401, { error: 'Não autorizado.' });
     if (!KEY) return json(200, { configured: false });
+    desempates = 0;
 
     // { only: [CNPJ], dry: true } confere só esses postos agora; com dry, mostra os candidatos sem gravar.
     // { since: data } revê (em lotes) tudo o que foi conferido antes dessa data, como depois de mudar a regra.
@@ -128,7 +155,7 @@ Deno.serve(async (req) => {
       const out = [];
       for (const s of due) {
         const log: unknown[] = [];
-        const hit = await link(s, new Map(owners), log);
+        const hit = await link(s, new Map(owners), log, rows.find((r) => r.station_id === s.c)?.place_id);
         out.push({ station: s.c, name: s.n, address: s.e, brand: s.b, now: rows.find((r) => r.station_id === s.c) ?? null, hit, candidates: log });
       }
       return json(200, { dry: true, stations: out });
@@ -138,8 +165,9 @@ Deno.serve(async (req) => {
     for (const s of due) {
       try {
         if (byPeople.has(s.c)) continue;
+        const cur = rows.find((r) => r.station_id === s.c)?.place_id ?? null;
         for (const [pid, o] of owners) if (o.station_id === s.c) owners.delete(pid);
-        const hit = await link(s, owners);
+        const hit = await link(s, owners, undefined, cur);
         if (hit) {
           matched++;
           if (hit.evict && !byPeople.has(hit.evict)) {

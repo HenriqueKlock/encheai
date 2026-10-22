@@ -1,9 +1,13 @@
 // Edge Function: dados do Google Places para o app (só usuários logados, verify_jwt).
-//  - mode "nearby":  postos perto de um ponto, com nota, número de avaliações e endereço;
+// Custo zero: cada pedido ao Google passa antes pelo orçamento do app inteiro (consume_google_budget), que
+// nunca deixa um tipo de chamada (SKU) passar da faixa grátis do mês. Nota e avaliações só vêm nas chamadas
+// próprias (nota, avaliacoes), que têm a faixa grátis menor; as buscas trazem nome, endereço, ponto e foto.
+//  - mode "nearby":  postos perto de um ponto, com nome, endereço e foto (sem nota: SKU Pro);
+//  - mode "nota":    nota e número de avaliações de um posto pelo place_id (SKU Enterprise);
 //  - mode "posto":   procura um posto específico pelo endereço (quando o "nearby" não achou);
 //  - mode "address": busca de endereço para cadastrar casa e trabalho;
 //  - mode "photo":   link temporário de uma foto do posto (sem expor a chave);
-//  - mode "lugar":   nota e dados de um posto já ligado ao Google (pelo place_id, sem busca por texto);
+//  - mode "lugar":   nome, endereço e foto de um posto já ligado ao Google (pelo place_id; sem nota: SKU Pro);
 //  - mode "avaliacoes": até 5 avaliações do Google (as que ele escolhe), com data, e o link para ver todas
 //    no Google Maps. Só quando a pessoa toca na nota; nada disso é guardado;
 //  - mode "autocomplete" + "details": sugestões enquanto a pessoa digita o endereço (Places Autocomplete,
@@ -14,7 +18,8 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
 const ALLOWED_ORIGINS = ['https://henriqueklock.github.io', 'http://localhost:5173', 'http://localhost:4173'];
 const PLACES = 'https://places.googleapis.com/v1/places:';
-const STATION_FIELDS = 'places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.formattedAddress,places.photos';
+// Só campos do SKU Pro (nota e número de avaliações são Enterprise e vêm à parte, no modo "nota")
+const STATION_FIELDS = 'places.id,places.displayName,places.location,places.formattedAddress,places.photos';
 const ADDRESS_FIELDS = 'places.id,places.displayName,places.location,places.formattedAddress,places.addressComponents,places.types';
 
 function cors(origin: string | null) {
@@ -60,7 +65,50 @@ async function withinQuota(req: Request, fn: string, max: number): Promise<boole
   }
 }
 
-const LIMITS: Record<string, number> = { nearby: 80, posto: 30, address: 30, photo: 30, autocomplete: 150, details: 30, lugar: 80, avaliacoes: 30 };
+// Por pessoa e por dia (para uma pessoa não gastar a faixa grátis de todo mundo)
+const LIMITS: Record<string, number> = { nearby: 25, posto: 15, address: 30, photo: 10, autocomplete: 150, details: 30, lugar: 30, nota: 10, avaliacoes: 8 };
+
+/**
+ * Faixa grátis do Google por SKU (por mês), com 5% de folga, e um teto por dia para durar o mês todo.
+ * Valores da tabela de preços de out/2026: Essentials 10 mil, Pro 5 mil, Enterprise mil chamadas por mês.
+ */
+const BUDGET: Record<string, { day: number; month: number }> = {
+  nearby_pro: { day: 150, month: 4750 }, // busca por perto (Pro)
+  text_pro: { day: 150, month: 4750 }, // busca por texto: posto, endereço e a ligação noturna (Pro)
+  details_pro: { day: 150, month: 4750 }, // lugar pelo id e detalhe do endereço (Pro)
+  details_ent: { day: 30, month: 950 }, // nota pelo id (Enterprise)
+  details_atm: { day: 30, month: 950 }, // avaliações (Enterprise + Atmosphere)
+  photo: { day: 30, month: 950 }, // foto (Place Details Photos)
+  autocomplete: { day: 300, month: 9500 }, // sugestões de endereço (Essentials)
+};
+const SKU: Record<string, string> = { nearby: 'nearby_pro', posto: 'text_pro', address: 'text_pro', lugar: 'details_pro', details: 'details_pro', nota: 'details_ent', avaliacoes: 'details_atm', photo: 'photo', autocomplete: 'autocomplete' };
+const FREE_OVER = 'O limite gratuito do Google de hoje acabou. Volta amanhã.';
+
+/** Orçamento do app inteiro (custo zero): só a chave de serviço chama. Sem confirmação, não chama o Google. */
+async function withinBudget(mode: string): Promise<boolean> {
+  const url = Deno.env.get('SUPABASE_URL'), key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const b = BUDGET[SKU[mode]];
+  if (!url || !key || !b) return false;
+  try {
+    const r = await fetch(url + '/rest/v1/rpc/consume_google_budget', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_sku: SKU[mode], p_day_max: b.day, p_month_max: b.month }),
+    });
+    return r.ok && (await r.json()) === true;
+  } catch {
+    return false;
+  }
+}
+/** Cota da pessoa e depois o orçamento do app; devolve a mensagem quando não pode chamar o Google. */
+async function allowed(req: Request, mode: string, personal: string): Promise<string | null> {
+  if (!(await withinQuota(req, 'google_' + mode, LIMITS[mode]))) return personal;
+  if (!(await withinBudget(mode))) {
+    console.log(JSON.stringify({ event: 'postos-google-orcamento', sku: SKU[mode] }));
+    return FREE_OVER;
+  }
+  return null;
+}
 
 const inBrazil = (lat: number, lon: number) => lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34;
 
@@ -120,30 +168,34 @@ Deno.serve(async (req) => {
   if (mode === 'photo') {
     const name = String(b.name ?? '');
     if (!/^places\/[A-Za-z0-9_-]{10,}\/photos\/[A-Za-z0-9_-]{10,}$/.test(name)) return json(400, { error: 'Foto inválida.' });
-    if (!(await withinQuota(req, 'google_photo', LIMITS.photo))) return json(429, { error: 'Limite diário de fotos do Google atingido para esta conta. Tente amanhã.' });
+    const no = await allowed(req, 'photo', 'Limite diário de fotos do Google atingido para esta conta. Tente amanhã.');
+    if (no) return json(429, { error: no });
     const r = await fetch('https://places.googleapis.com/v1/' + name + '/media?maxWidthPx=800&maxHeightPx=500&skipHttpRedirect=true', { headers: { 'X-Goog-Api-Key': key } });
     if (!r.ok) {
       console.error(JSON.stringify({ event: 'postos-google-error', mode, status: r.status }));
-      return json(r.status === 429 ? 429 : 502, { error: r.status === 429 ? 'A cota diária do Google do app acabou. Volta a funcionar amanhã.' : 'O Google não devolveu a foto agora.' });
+      return json(r.status === 429 ? 429 : 502, { error: r.status === 429 ? FREE_OVER : 'O Google não devolveu a foto agora.' });
     }
     const d = await r.json();
     return json(200, { configured: true, uri: d.photoUri ?? null });
   }
 
-  if (mode === 'lugar' || mode === 'avaliacoes') {
+  if (mode === 'lugar' || mode === 'avaliacoes' || mode === 'nota') {
     const id = String(b.id ?? '');
     if (!/^[A-Za-z0-9_-]{10,300}$/.test(id)) return json(400, { error: 'Lugar inválido.' });
-    if (!(await withinQuota(req, 'google_' + mode, LIMITS[mode]))) return json(429, { error: mode === 'avaliacoes' ? 'Limite diário de avaliações do Google atingido para esta conta. Tente amanhã.' : 'Limite diário de buscas no Google atingido para esta conta. Tente amanhã.' });
+    const no = await allowed(req, mode, mode === 'avaliacoes' ? 'Limite diário de avaliações do Google atingido para esta conta. Tente amanhã.' : mode === 'nota' ? 'Limite diário de notas do Google atingido para esta conta. Tente amanhã.' : 'Limite diário de buscas no Google atingido para esta conta. Tente amanhã.');
+    if (no) return json(429, { error: no });
     const mask = mode === 'lugar'
       ? STATION_FIELDS.replace(/places\./g, '')
+      : mode === 'nota' ? 'rating,userRatingCount'
       : 'rating,userRatingCount,reviews,googleMapsUri,googleMapsLinks';
     const r = await fetch('https://places.googleapis.com/v1/places/' + id + '?languageCode=pt-BR&regionCode=BR', { headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': mask } });
     if (!r.ok) {
       console.error(JSON.stringify({ event: 'postos-google-error', mode, status: r.status }));
-      return json(r.status === 429 ? 429 : 502, { error: r.status === 429 ? 'A cota diária do Google do app acabou. Volta a funcionar amanhã.' : 'O Google não respondeu agora.' });
+      return json(r.status === 429 ? 429 : 502, { error: r.status === 429 ? FREE_OVER : 'O Google não respondeu agora.' });
     }
     const p = await r.json();
     if (mode === 'lugar') return json(200, { configured: true, places: [station(p)] });
+    if (mode === 'nota') return json(200, { configured: true, rating: typeof p.rating === 'number' ? p.rating : null, count: p.userRatingCount ?? 0 });
     const reviews = (p.reviews ?? []).map((v: any) => ({
       rating: typeof v.rating === 'number' ? v.rating : null,
       time: v.publishTime ?? null,
@@ -162,13 +214,14 @@ Deno.serve(async (req) => {
   if (mode === 'autocomplete') {
     const q = String(b.query ?? '').trim().slice(0, 120);
     if (q.length < 3 || !validToken) return json(400, { error: 'Busca muito curta.' });
-    if (!(await withinQuota(req, 'google_autocomplete', LIMITS.autocomplete))) return json(429, { error: 'Limite diário de sugestões do Google atingido para esta conta. Tente amanhã.' });
+    const no = await allowed(req, 'autocomplete', 'Limite diário de sugestões do Google atingido para esta conta. Tente amanhã.');
+    if (no) return json(429, { error: no });
     const body: Record<string, unknown> = { input: q, sessionToken: token, languageCode: 'pt-BR', regionCode: 'BR', includedRegionCodes: ['br'] };
     if (hasPoint) body.locationBias = { circle: { center: { latitude: lat, longitude: lon }, radius: 30000 } };
     const r = await fetch(PLACES + 'autocomplete', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key }, body: JSON.stringify(body) });
     if (!r.ok) {
       console.error(JSON.stringify({ event: 'postos-google-error', mode, status: r.status }));
-      return json(r.status === 429 ? 429 : 502, { error: r.status === 429 ? 'A cota diária do Google do app acabou. Volta a funcionar amanhã.' : 'O Google não respondeu agora.' });
+      return json(r.status === 429 ? 429 : 502, { error: r.status === 429 ? FREE_OVER : 'O Google não respondeu agora.' });
     }
     const d = await r.json();
     const places = (d.suggestions ?? [])
@@ -182,7 +235,8 @@ Deno.serve(async (req) => {
   if (mode === 'details') {
     const id = String(b.id ?? '');
     if (!/^[A-Za-z0-9_-]{10,300}$/.test(id) || !validToken) return json(400, { error: 'Lugar inválido.' });
-    if (!(await withinQuota(req, 'google_details', LIMITS.details))) return json(429, { error: 'Limite diário de buscas no Google atingido para esta conta. Tente amanhã.' });
+    const no = await allowed(req, 'details', 'Limite diário de buscas no Google atingido para esta conta. Tente amanhã.');
+    if (no) return json(429, { error: no });
     const r = await fetch('https://places.googleapis.com/v1/places/' + id + '?languageCode=pt-BR&regionCode=BR&sessionToken=' + token, {
       headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': ADDRESS_FIELDS.replace(/places\./g, '') },
     });
@@ -212,14 +266,12 @@ Deno.serve(async (req) => {
     return json(400, { error: 'Modo desconhecido.' });
   }
 
-  if (!(await withinQuota(req, 'google_' + mode, LIMITS[mode]))) {
-    console.log(JSON.stringify({ event: 'postos-google-cota', mode }));
-    return json(429, { error: 'Limite diário de buscas no Google atingido para esta conta. Tente amanhã.' });
-  }
+  const no = await allowed(req, mode, 'Limite diário de buscas no Google atingido para esta conta. Tente amanhã.');
+  if (no) return json(429, { error: no });
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': fields }, body: JSON.stringify(body) });
   if (!r.ok) {
     console.error(JSON.stringify({ event: 'postos-google-error', mode, status: r.status, body: (await r.text()).slice(0, 300) }));
-    if (r.status === 429) return json(429, { error: 'A cota diária do Google do app acabou. Volta a funcionar amanhã.' });
+    if (r.status === 429) return json(429, { error: FREE_OVER });
     return json(502, { error: 'O Google não respondeu agora.' });
   }
   const data = await r.json();
