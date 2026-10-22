@@ -7,7 +7,7 @@ import { join } from 'node:path';
 const cfg = readFileSync(new URL('../src/config.ts', import.meta.url), 'utf8');
 const URL_ = cfg.match(/SUPABASE_URL = '([^']+)'/)[1];
 const KEY = cfg.match(/SUPABASE_PUBLISHABLE_KEY = '([^']+)'/)[1];
-const TABLES = ['vehicles', 'fuel_logs', 'services', 'service_items', 'user_settings', 'user_places', 'api_usage', 'ratings', 'station_live', 'feedback', 'push_subscriptions', 'push_keys', 'push_reminders', 'price_reports', 'station_place_votes', 'app_admins', 'google_budget'];
+const TABLES = ['vehicles', 'fuel_logs', 'services', 'service_items', 'user_settings', 'user_places', 'api_usage', 'ratings', 'station_live', 'feedback', 'push_subscriptions', 'push_keys', 'push_reminders', 'price_reports', 'station_place_votes', 'app_admins', 'google_budget', 'station_name_votes'];
 const FAKE_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhYWFhYWFhYS0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMGEiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImV4cCI6NDEwMjQ0NDgwMH0.assinatura-falsa';
 
 let fails = 0;
@@ -43,14 +43,14 @@ for (const t of TABLES) {
   del.status >= 400 ? ok(`${t}: exclusão bloqueada (${del.status})`) : bad(`${t}: exclusão respondeu ${del.status}`);
 }
 
-// station_places é pública para leitura (só CNPJ → place_id do Google), mas ninguém de fora grava
-{
-  const ins = await call('/rest/v1/station_places', { method: 'POST', body: { station_id: '00000000000000', place_id: 'ChIJteste' } });
-  ins.status >= 400 ? ok(`station_places: criação sem login bloqueada (${ins.status})`) : bad('station_places: criou linha sem login');
-  const upd = await call('/rest/v1/station_places?station_id=neq.x', { method: 'PATCH', body: { place_id: 'ChIJteste' } });
-  closed(upd) || upd.status === 204 ? ok(`station_places: alteração sem login sem efeito (${upd.status})`) : bad(`station_places: alteração sem login respondeu ${upd.status}`);
-  const del = await call('/rest/v1/station_places?station_id=neq.x', { method: 'DELETE' });
-  closed(del) || del.status === 204 ? ok(`station_places: exclusão sem login sem efeito (${del.status})`) : bad(`station_places: exclusão respondeu ${del.status}`);
+// station_places e station_names são públicas para leitura (CNPJ → place_id; CNPJ → nome na fachada), mas ninguém de fora grava
+for (const [t, col, val] of [['station_places', 'place_id', 'ChIJteste'], ['station_names', 'name', 'Teste']]) {
+  const ins = await call('/rest/v1/' + t, { method: 'POST', body: { station_id: '00000000000000', [col]: val } });
+  ins.status >= 400 ? ok(`${t}: criação sem login bloqueada (${ins.status})`) : bad(`${t}: criou linha sem login`);
+  const upd = await call('/rest/v1/' + t + '?station_id=neq.x', { method: 'PATCH', body: { [col]: val } });
+  closed(upd) || upd.status === 204 ? ok(`${t}: alteração sem login sem efeito (${upd.status})`) : bad(`${t}: alteração sem login respondeu ${upd.status}`);
+  const del = await call('/rest/v1/' + t + '?station_id=neq.x', { method: 'DELETE' });
+  closed(del) || del.status === 204 ? ok(`${t}: exclusão sem login sem efeito (${del.status})`) : bad(`${t}: exclusão respondeu ${del.status}`);
 }
 
 // 2) Função de cota não pode ser chamada sem login

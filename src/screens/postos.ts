@@ -7,7 +7,7 @@ import {
   type Recommendation, type Station, type StationLive, type StationRow, type StationsFile, type StationUse,
 } from '../postos';
 import { gps, loadStations, route, type FoundPlace, type Route } from '../lugares';
-import { currentSession, googleEmbedKey, googleNota, googlePhoto, googlePlaces, googleReviews, setPlace, stationPlaces, votePlace, type GoogleReviews, type PlaceLinks, type Places } from '../sync';
+import { currentSession, googleEmbedKey, googleNota, googlePhoto, googlePlaces, googleReviews, setPlace, stationNames, stationPlaces, voteName, votePlace, type GoogleReviews, type PlaceLinks, type Places, type StationNames } from '../sync';
 import { fetchNetwork, invalidateNetwork, network } from '../rede';
 import { plausible, reportPrices, reportedAsOwn } from '../precos';
 import { getMeta, setMeta, stamp, db, type FuelLog } from '../db';
@@ -95,7 +95,9 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
    * Início usam só os nossos dados (nome da ANP sem bandeira antiga, ponto da ANP); o Google aparece só na
    * ficha do posto, junto do mapa do Google (Maps Embed, grátis), e fica só na memória enquanto o app está aberto.
    */
-  const nm = (s: Station) => anpName(s);
+  /** Nome na fachada dado pelas pessoas (dado nosso); sem ele, o da ANP sem bandeira antiga. */
+  let names: StationNames = { names: new Map(), mine: new Map() };
+  const nm = (s: Station) => names.names.get(s.c) || anpName(s);
   function stations(): Station[] {
     return file ? file.postos : [];
   }
@@ -175,7 +177,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     file = await loadStations();
     loadFailed = !file;
     if (file) {
-      links = await stationPlaces();
+      [links, names] = await Promise.all([stationPlaces(), stationNames()]);
       placeOf = links.place;
       // versões anteriores guardavam dados do Google no aparelho: apaga
       for (const k of ['google_cache_v2', 'google_cache_v3', 'google_notas_v1', 'google_fotos_v1']) void db.meta.delete(k);
@@ -995,7 +997,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   function openPosto(cnpj: string) {
     const s = stations().find((x) => x.c === cnpj);
     if (!s) return;
-    if (shown?.c !== s.c) reviewsOpen = null;
+    if (shown?.c !== s.c) { reviewsOpen = null; nameEdit = null; }
     shown = s;
     // a ligação mudou (correção, servidor) depois que este posto foi casado: esquece o lugar antigo
     const old = gmatch.get(s.c);
@@ -1153,7 +1155,12 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       const head =
         '<div class="ps2-head"><div class="ps2-top"><button type="button" class="ps2-back" data-close aria-label="Voltar">' + BACK + '</button>' +
         '<span class="ps2-selo ' + rel.level + '">' + SHIELD_OK + fmt(rel.score, 1) + ' ' + lvlTxt + '</span></div>' +
-        '<div class="ps2-name"><h2>' + brandBadge(s.b, 30) + esc(nm(s)) + '</h2><span>' + esc([s.e, dist].filter(Boolean).join(' · ')) + (s.pg === 'b' ? ' · local aproximado' : '') + '</span></div>' +
+        '<div class="ps2-name">' + (nameEdit === s.c
+          ? '<form class="nm2-edit" data-nm-form><label class="sr" for="nm2-in">Nome que aparece na fachada</label><input id="nm2-in" maxlength="60" autocomplete="off" enterkeyhint="done" placeholder="Nome na fachada" value="' + esc(names.mine.get(s.c) ?? nm(s)) + '"><button type="button" data-nm="cancel" aria-label="Cancelar">' + XS + '</button><button type="submit" class="go">Salvar</button></form>'
+          : '<h2>' + brandBadge(s.b, 30) + esc(nm(s)) + '</h2>') +
+        '<span>' + esc([s.e, dist].filter(Boolean).join(' · ')) + (s.pg === 'b' ? ' · local aproximado' : '') + '</span>' +
+        (nameEdit === s.c ? '<span>Escreva como está na fachada. Vale para você na hora e para todos quando outra pessoa escrever o mesmo.</span>'
+          : '<button type="button" class="nm2-fix" data-nm="open">' + (names.names.has(s.c) ? 'Nome errado?' : 'Na fachada é outro nome?') + '</button>') + '</div>' +
         (gOn() ? photoFig(s) : '') +
         '<div class="ps2-plates">' + (car.model.fuels.includes('etanol') ? plate('etanol', row.eth) : '') + (car.model.fuels.includes('gasolina') ? plate('gasolina', row.gas) : '') + '</div></div>';
       // anel do rendimento
@@ -1708,6 +1715,38 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (el.closest('[data-photo]')) return openLightbox(shown);
     if (el.closest('[data-gfix]')) return void openFix(shown);
     if (el.closest('[data-gok]')) { const gm = gmatch.get(shown.c); if (gm) void pickPlace(shown, gm.id); }
+    const nmAct = el.closest<HTMLElement>('[data-nm]')?.dataset.nm;
+    if (nmAct === 'open') void openNameEdit(shown);
+    if (nmAct === 'cancel') { nameEdit = null; rerenderPosto(shown); }
+  });
+
+  /* ---------- nome na fachada (dado das pessoas) ---------- */
+  let nameEdit: string | null = null;
+  async function openNameEdit(s: Station) {
+    if (!(await currentSession())) return toast('Entre na conta (Perfil) para corrigir o nome.');
+    nameEdit = s.c;
+    rerenderPosto(s);
+    setTimeout(() => { const i = document.getElementById('nm2-in') as HTMLInputElement | null; i?.focus(); i?.select(); }, 30);
+  }
+  $('posto-body').addEventListener('submit', async (e) => {
+    const f = (e.target as HTMLElement).closest('[data-nm-form]');
+    if (!f || !shown) return;
+    e.preventDefault();
+    const st = shown;
+    const v = (document.getElementById('nm2-in') as HTMLInputElement | null)?.value ?? '';
+    const r = await voteName(st.c, v);
+    if ('error' in r) return toast(r.error);
+    names.mine.set(st.c, r.name);
+    names.names.set(st.c, r.name);
+    nameEdit = null;
+    toast(r.applied ? 'Nome corrigido para todos. Obrigado!' : 'Nome corrigido para você. Vale para todos quando outra pessoa escrever o mesmo.');
+    $('posto-title').textContent = nm(st);
+    rerenderPosto(st);
+    render();
+    renderHome();
+  });
+  $('posto-body').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && (e.target as HTMLElement).id === 'nm2-in' && shown) { e.preventDefault(); nameEdit = null; rerenderPosto(shown); }
   });
 
   $('posto-body').addEventListener('click', async (e) => {

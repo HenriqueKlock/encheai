@@ -281,6 +281,13 @@
 .ps2-name { display: flex; flex-direction: column; gap: 4px; }
 .ps2-name h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 30px; letter-spacing: -.03em; line-height: 1.05; }
 .ps2-name span { font-size: 14px; color: var(--on-mata-2); }
+.nm2-fix { all: unset; cursor: pointer; align-self: flex-start; font-size: 13px; font-weight: 600; color: var(--broto); text-decoration: underline; text-underline-offset: 3px; }
+.nm2-fix:focus-visible { outline: 2px solid var(--broto); outline-offset: 2px; }
+.nm2-edit { display: flex; align-items: center; gap: 6px; }
+.nm2-edit input { flex: 1; min-width: 0; height: 44px; padding: 0 12px; border-radius: 14px; border: 0; font: 700 18px var(--font); color: var(--ink); background: #fff; }
+.nm2-edit button { all: unset; cursor: pointer; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 14px; }
+.nm2-edit button[data-nm="cancel"] { width: 44px; color: var(--on-mata); background: var(--mata-2); }
+.nm2-edit .go { padding: 0 14px; font-weight: 800; color: var(--mata); background: var(--broto); }
 .ps2-plates { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 10px; }
 .pl2 { background: var(--mata-2); border-radius: 20px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pl2 .k { display: inline-flex; align-items: center; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--on-mata-2); }

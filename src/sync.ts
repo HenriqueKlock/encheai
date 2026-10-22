@@ -547,6 +547,48 @@ export async function stationPlaces(fresh = false): Promise<PlaceLinks> {
     return toLinks(cached ?? { at: 0, rows: [], mine: [] });
   }
 }
+/** Nome do posto na fachada, dado pelas pessoas (dado nosso: pode ficar guardado). */
+export interface StationNames { names: Map<string, string>; mine: Map<string, string> }
+const NAMES_KEY = 'station_names_v1';
+type NamesCache = { at: number; rows: [string, string][]; mine: [string, string][] };
+const toNames = (c: NamesCache): StationNames => {
+  const names = new Map(c.rows);
+  for (const [s, n] of c.mine) names.set(s, n);
+  return { names, mine: new Map(c.mine) };
+};
+export async function stationNames(fresh = false): Promise<StationNames> {
+  const cached = await getMeta<NamesCache | null>(NAMES_KEY, null);
+  if (!fresh && cached && Date.now() - cached.at < 3600e3) return toNames(cached);
+  try {
+    const { data, error } = await supabase.from('station_names').select('station_id,name').limit(10000);
+    if (error) throw error;
+    const rows = (data as { station_id: string; name: string }[]).map((r) => [r.station_id, r.name] as [string, string]);
+    let mine: [string, string][] = cached?.mine ?? [];
+    if (await currentSession()) {
+      const v = await supabase.from('station_name_votes').select('station_id,name').limit(2000);
+      if (!v.error) mine = (v.data as { station_id: string; name: string }[]).map((r) => [r.station_id, r.name]);
+    }
+    const c: NamesCache = { at: Date.now(), rows, mine };
+    await setMeta(NAMES_KEY, c);
+    return toNames(c);
+  } catch {
+    return toNames(cached ?? { at: 0, rows: [], mine: [] });
+  }
+}
+/** A pessoa diz o nome que aparece na fachada. Devolve se já vale para todos ou uma mensagem de erro. */
+export async function voteName(stationId: string, name: string): Promise<{ applied: boolean; name: string } | { error: string }> {
+  const s = await currentSession();
+  if (!s) return { error: 'Entre na conta (Perfil) para corrigir o nome.' };
+  const clean = name.replace(/\s+/g, ' ').trim();
+  if (clean.length < 2 || clean.length > 60 || /[<>{}\\]/.test(clean)) return { error: 'Escreva o nome como aparece na fachada (2 a 60 letras).' };
+  const { error } = await supabase.from('station_name_votes').upsert({ user_id: s.user.id, station_id: stationId, name: clean, created_at: new Date().toISOString() });
+  if (error) return { error: /Muitas correções/.test(error.message) ? 'Muitas correções hoje. Tente amanhã.' : 'Não deu para salvar o nome agora.' };
+  const cached = await getMeta<NamesCache | null>(NAMES_KEY, null);
+  if (cached) await setMeta(NAMES_KEY, { ...cached, mine: [...cached.mine.filter(([c]) => c !== stationId), [stationId, clean]] });
+  const row = await supabase.from('station_names').select('name').eq('station_id', stationId).maybeSingle();
+  const r = row.data as { name: string } | null;
+  return { applied: !!r && r.name.toLowerCase() === clean.toLowerCase(), name: clean };
+}
 /**
  * A pessoa diz qual é o posto no Google (ou null: não está no Google). Devolve se já vale para todos
  * (duas pessoas concordaram ou quem corrigiu administra o app) ou uma mensagem de erro.
