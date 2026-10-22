@@ -248,7 +248,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     const del = $('f-del');
     del.hidden = !editing;
     del.classList.remove('armed');
-    del.textContent = 'Excluir';
+    del.textContent = 'Excluir abastecimento';
     $('fill-title').textContent = editing ? 'Editar abastecimento' : 'Abastecer';
     $('f-save').textContent = editing ? 'Salvar alterações' : isNovo() ? 'Salvar abastecimento' : 'Salvar';
     $('f-err').hidden = true;
@@ -371,7 +371,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     if (!delArmed) {
       delArmed = true;
       $('f-del').classList.add('armed');
-      $('f-del').textContent = 'Confirmar';
+      $('f-del').textContent = 'Toque de novo para excluir';
       return;
     }
     await softDelete(db.fuel_logs, editing.id);

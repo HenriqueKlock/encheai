@@ -247,7 +247,8 @@ def xlsx_rows(raw: bytes):
         yield list(row)
 
 
-def parse_lpc(raw: bytes, ufs: set[str], probe: bool = False):
+def parse_lpc(raw: bytes, ufs: set[str], probe: bool = False, stats: dict | None = None):
+    """Preços por posto das UFs pedidas. Com `stats`, junta também os preços de todo o país para as médias."""
     it = xlsx_rows(raw)
     h = None
     for i, r in enumerate(it):
@@ -270,12 +271,20 @@ def parse_lpc(raw: bytes, ufs: set[str], probe: bool = False):
     for r in it:
         uf = str(g(r, 'uf') or '').strip().upper()
         uf = uf if len(uf) == 2 else next((s for s, n in UF_NOME.items() if norm(n) == norm(uf)), uf)
+        if stats is not None and uf not in ufs:
+            code, price = product_code(g(r, 'prod')), to_price(g(r, 'preco'))
+            if code and price:
+                stats.setdefault(('BR', code), []).append(price)
         if uf not in ufs:
             continue
         cnpj = cnpj_of(g(r, 'cnpj'))
         code = product_code(g(r, 'prod'))
         price = to_price(g(r, 'preco'))
         day = to_date(g(r, 'data'))
+        if stats is not None and code and price:
+            stats.setdefault(('BR', code), []).append(price)
+            stats.setdefault(('UF', code), []).append(price)
+            stats.setdefault((norm(g(r, 'mun')), code), []).append(price)
         if not (cnpj and code and price and day):
             continue
         out.append({
@@ -668,6 +677,7 @@ def main():
     log('Levantamento de preços…')
     prices: dict[str, dict[str, list]] = {}
     weeks = []
+    week_stats: dict = {}
     if a.lpc is not None:
         files = [(f'local{i}', f'local{i}', p) for i, p in enumerate(a.lpc)]
     else:
@@ -676,7 +686,11 @@ def main():
     for ini, fim, url in files:
         try:
             data = open(url, 'rb').read() if a.lpc is not None else http_get(url)
-            recs = parse_lpc(data, ufs, probe=probe and not weeks)
+            # médias de preço (Brasil, estado e cada cidade) só da semana mais recente
+            st = {} if not weeks else None
+            recs = parse_lpc(data, ufs, probe=probe and not weeks, stats=st)
+            if st is not None:
+                week_stats = st
         except Exception as e:  # noqa: BLE001
             log(f'  semana {ini} ignorada: {e}')
             continue
@@ -831,12 +845,25 @@ def main():
         postos.append(item)
     postos.sort(key=lambda x: x['c'])
     sem = len(cad) - len(postos)
+    # Preço médio da semana (pesquisa da ANP): referência para todo mundo, no país, no estado e em cada cidade
+    def media(k):
+        v = week_stats.get(k) or []
+        return [round(sum(v) / len(v), 2), len(v)] if len(v) >= 3 else None
+    codes = ('gc', 'et', 'ga', 'd10', 'gnv')
+    medias = None
+    if weeks and week_stats:
+        medias = {'semana': weeks[0], 'br': {c: m for c in codes if (m := media(('BR', c)))}, 'uf': {c: m for c in codes if (m := media(('UF', c)))},
+                  'mun': {}}
+        for (k, c) in week_stats:
+            if k not in ('BR', 'UF') and (m := media((k, c))):
+                medias['mun'].setdefault(k, {})[c] = m
     doc = {
         'v': 1, 'uf': sorted(ufs), 'gerado': dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
         'fontes': {'lpc_semanas': weeks, 'fisc_desde': since, 'fisc_ate': fisc_last, 'cadastro': today.isoformat(),
                    **({'osm': osm_quando} if a.osm == 'usar' and osm_quando else {})},
         'contagem': {'cadastro': len(cad), 'com_local': len(postos), 'sem_local': sem, 'com_preco': sum(1 for x in postos if 'pr' in x)},
         'postos': postos,
+        **({'medias': medias} if medias else {}),
     }
     save(f'postos-{"-".join(sorted(ufs))}.json', doc, out_dir)
     log('Resumo:', json.dumps(doc['contagem']))

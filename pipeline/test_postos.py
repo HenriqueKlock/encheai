@@ -138,6 +138,9 @@ class Fluxo(unittest.TestCase):
             self.assertEqual(doc['contagem']['cadastro'], 3)
             self.assertEqual(doc['contagem']['sem_local'], 1)
             self.assertNotIn('o', um)  # sem --osm usar, o arquivo não muda
+            # médias da semana: precisam de 3 preços (aqui há 2 de gasolina comum em Florianópolis)
+            self.assertEqual(doc['medias']['semana'], ['local0', 'local0'])
+            self.assertNotIn('gc', doc['medias']['uf'])
 
             # OpenStreetMap: nome na fachada e ponto exato; o posto sem coordenada ganha ponto pelo endereço completo
             osm = os.path.join(d, 'osm.json')

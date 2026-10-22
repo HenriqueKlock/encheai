@@ -2,7 +2,7 @@
 // Junta três fontes: o arquivo da ANP (cadastro, preços semanais, fiscalização), o Google (nota e foto,
 // guardados no aparelho por 7 dias) e a rede (preço pago, rendimento medido e avaliações de quem usa o app).
 import {
-  EVENT_LABEL, ageDays, anpName, bboxAround, bestWithoutPrice, goodShare, haversineKm, bestForStation, matchGoogle, nameTokens, rankForStation, recommend, starsOf, sortRows, stationsFor, usageVerdict, weakPoints, yieldOf,
+  EVENT_LABEL, ageDays, anpName, cityKey, bboxAround, bestWithoutPrice, goodShare, haversineKm, bestForStation, matchGoogle, nameTokens, rankForStation, recommend, starsOf, sortRows, stationsFor, usageVerdict, weakPoints, yieldOf,
   type Base, type CarModel, type Fuel, type GoogleMatch, type GoogleStation, type LatLon, type OwnPrice, type Personal, type PricePoint,
   type Recommendation, type Station, type StationLive, type StationRow, type StationsFile, type StationUse,
 } from '../postos';
@@ -710,12 +710,31 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const cheapId = rec.cheapest && rec.cheapest.s.c !== bestId ? rec.cheapest.s.c : undefined;
     const top = [bestId, cheapId].map((c) => (c ? rows.find((r) => r.s.c === c) : undefined)).filter((r): r is StationRow => !!r);
     const list = [...top, ...sorted.filter((r) => r.s.c !== bestId && r.s.c !== cheapId)];
-    let html = compareStrip(base) + (rec.best ? '' : noPriceCard(rows, b));
+    let html = compareStrip(base) + mediaStrip(rows) + (rec.best ? '' : noPriceCard(rows, b));
     const why = '<details class="why2s"><summary>' + INFO + 'Por que este é o sugerido</summary>' + sourcesNote() + '</details>';
     html += '<div class="st2-list">' + list.slice(0, limit).map((r) => row2(r, b, rec, r.s.c === bestId, r.s.c === cheapId) + (r.s.c === bestId ? why : '')).join('') +
       (list.length > limit ? '<button type="button" class="list-more" data-act="all">Mostrar todos (' + list.length + ')</button>' : '') + '</div>';
     if (rec.cheaperUnsafe) html += '<p class="rec-warn">' + ICON.warn + '<span>' + esc(nm(rec.cheaperUnsafe.s)) + ' sairia mais barato, mas ficou de fora: ' + (rec.cheaperUnsafe.rel.recentSerious ? 'autuação séria da ANP nos últimos 12 meses.' : 'confiabilidade baixa.') + '</span></p>';
     return html;
+  }
+  /** Preço médio da semana (pesquisa da ANP) na cidade dos postos da lista, no estado e no Brasil: a referência de todo mundo. */
+  function mediaStrip(rows: StationRow[]) {
+    const md = file?.medias;
+    if (!md) return '';
+    const count = new Map<string, number>();
+    for (const r of rows.slice(0, 20)) count.set(r.s.m, (count.get(r.s.m) ?? 0) + 1);
+    const city = [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+    const mun = md.mun[cityKey(city)] ?? {};
+    const fuels = model().fuels.filter((f) => f === 'gasolina' || f === 'etanol');
+    const code = (f: Fuel): 'gc' | 'et' => (f === 'gasolina' ? 'gc' : 'et');
+    const cell = (label: string, v?: [number, number]) => (v ? '<span>' + label + ' <b>' + fmt(v[0], 2) + '</b></span>' : '');
+    const lines = fuels.map((f) => {
+      const c = code(f);
+      const parts = cell(city, mun[c]) + cell('SC', md.uf[c]) + cell('Brasil', md.br[c]);
+      return parts ? '<div class="md2-r"><i class="dot ' + (f === 'gasolina' ? 'gas' : 'eth') + '"></i>' + parts + '</div>' : '';
+    }).join('');
+    if (!lines) return '';
+    return '<div class="md2" aria-label="Preço médio da semana pela pesquisa da ANP"><span class="md2-l">Média da semana (ANP, ' + dm(md.semana[0]) + ' a ' + dm(md.semana[1]) + ')</span>' + lines + '</div>';
   }
   function row2(r: StationRow, b: Base, rec: Recommendation, isBest: boolean, isCheap: boolean) {
     const o = isBest ? rec.best! : isCheap ? rec.cheapest! : r.best;

@@ -25,6 +25,8 @@ export interface StationsFile {
   uf: string[];
   gerado: string;
   fontes: { lpc_semanas: [string, string][]; fisc_desde: string; fisc_ate: string | null; cadastro: string; osm?: string };
+  /** Preço médio da semana mais recente da pesquisa da ANP ([valor, nº de preços]): país, estado e cada cidade (chave sem acento, maiúscula). */
+  medias?: { semana: [string, string]; br: Partial<Record<PriceCode, [number, number]>>; uf: Partial<Record<PriceCode, [number, number]>>; mun: Record<string, Partial<Record<PriceCode, [number, number]>>> };
   postos: Station[];
 }
 
@@ -563,3 +565,6 @@ export function anpName(s: Pick<Station, 'n' | 'b'>): string {
   });
   return changed ? out.replace(new RegExp('\\b(' + s.b + ')(\\s+\\1\\b)+', 'g'), '$1') : s.n;
 }
+
+/** Chave de cidade igual à do arquivo de postos (maiúscula, sem acento, só letras e números). */
+export const cityKey = (s: string) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');

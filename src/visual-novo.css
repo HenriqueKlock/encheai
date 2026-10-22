@@ -214,6 +214,11 @@
 /* onde sai mais barato encher e por que o sugerido */
 .cmp2 { flex: none; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -14px; padding: 0 14px; }
 .cmp2::-webkit-scrollbar { display: none; }
+.md2 { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 14px; background: var(--soft); font-size: 13px; color: var(--muted); }
+.md2-l { font-size: 12px; font-weight: 600; }
+.md2-r { display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap; }
+.md2-r .dot { margin-right: -6px; }
+.md2-r b { color: var(--ink); font-weight: 700; }
 .cmp2-l { flex: none; font-size: 12px; font-weight: 600; color: var(--muted); }
 .cmp2 .c2 { flex: none; display: inline-flex; flex-direction: row; align-items: center; justify-content: center; min-width: 0; gap: 4px; white-space: nowrap; height: 34px; padding: 0 12px; border-radius: 17px; border: 1.5px solid var(--field); background: var(--surface); font-size: 13px; font-weight: 600; color: var(--ink); }
 .cmp2 .c2 b { font-family: var(--display); font-weight: 800; margin-left: 2px; color: var(--muted); }
@@ -266,6 +271,7 @@
 .v2 #posto-sheet .sheet-body { padding-top: 0; }
 .v2 #posto-body { gap: 12px; }
 .v2 #posto-gmap:not(:empty) { margin-top: 12px; }
+.f-del { margin-top: 16px; }
 .ps-gmap { display: block; width: 100%; border: 0; }
 .gm-attr { font-family: Roboto, Arial, sans-serif; font-weight: 400; color: #5E5E5E; }
 .gp2-q { font-size: 14px; font-weight: 600; }
