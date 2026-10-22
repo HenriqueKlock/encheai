@@ -43,6 +43,16 @@ for (const t of TABLES) {
   del.status >= 400 ? ok(`${t}: exclusão bloqueada (${del.status})`) : bad(`${t}: exclusão respondeu ${del.status}`);
 }
 
+// station_places é pública para leitura (só CNPJ → place_id do Google), mas ninguém de fora grava
+{
+  const ins = await call('/rest/v1/station_places', { method: 'POST', body: { station_id: '00000000000000', place_id: 'ChIJteste' } });
+  ins.status >= 400 ? ok(`station_places: criação sem login bloqueada (${ins.status})`) : bad('station_places: criou linha sem login');
+  const upd = await call('/rest/v1/station_places?station_id=neq.x', { method: 'PATCH', body: { place_id: 'ChIJteste' } });
+  closed(upd) || upd.status === 204 ? ok(`station_places: alteração sem login sem efeito (${upd.status})`) : bad(`station_places: alteração sem login respondeu ${upd.status}`);
+  const del = await call('/rest/v1/station_places?station_id=neq.x', { method: 'DELETE' });
+  closed(del) || del.status === 204 ? ok(`station_places: exclusão sem login sem efeito (${del.status})`) : bad(`station_places: exclusão respondeu ${del.status}`);
+}
+
 // 2) Função de cota não pode ser chamada sem login
 const rpc = await call('/rest/v1/rpc/consume_quota', { method: 'POST', body: { p_fn: 'google_nearby', p_max: 999 } });
 rpc.status >= 400 ? ok(`consume_quota sem login bloqueada (${rpc.status})`) : bad('consume_quota respondeu sem login');

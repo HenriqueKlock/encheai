@@ -453,7 +453,7 @@ async function syncPlaces() {
 }
 
 /* ---------- Google Places (opcional: só funciona com a chave configurada no servidor) ---------- */
-export type GoogleMode = 'nearby' | 'posto' | 'address' | 'autocomplete' | 'details';
+export type GoogleMode = 'nearby' | 'posto' | 'address' | 'autocomplete' | 'details' | 'lugar';
 /** Link temporário (do Google) para a foto de um lugar; null quando não há. */
 export async function googlePhoto(name: string): Promise<string | null> {
   if (!(await currentSession())) return null;
@@ -469,4 +469,36 @@ export async function googlePlaces<T>(body: { mode: GoogleMode; lat?: number; lo
   const { data, error } = await Promise.race([supabase.functions.invoke('postos-google', { body }), timeout]);
   if (error) throw error;
   return data as { configured: boolean; places: T[] };
+}
+
+/** Uma avaliação do Google, como ele devolve (até 5, escolhidas por relevância). Não é guardada. */
+export interface GoogleReview { rating: number | null; time: string | null; rel: string; text: string; author: string; authorUri: string; uri: string }
+export interface GoogleReviews { rating: number | null; count: number; uri: string; reviewsUri: string; reviews: GoogleReview[] }
+/** Avaliações de um lugar do Google, só quando a pessoa pede (toque na nota). */
+export async function googleReviews(id: string): Promise<GoogleReviews | null> {
+  if (!(await currentSession())) return null;
+  const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('O Google demorou para responder.')), 12000));
+  const { data, error } = await Promise.race([supabase.functions.invoke('postos-google', { body: { mode: 'avaliacoes', id } }), timeout]);
+  if (error) throw error;
+  const d = data as GoogleReviews & { configured: boolean };
+  return d.configured ? d : null;
+}
+
+/**
+ * Postos já ligados ao Google pelo servidor (CNPJ → place_id; só o id, que pode ser guardado).
+ * Fica no aparelho e é renovado uma vez por dia.
+ */
+export async function stationPlaces(): Promise<Map<string, string>> {
+  const KEY = 'station_places';
+  const cached = await getMeta<{ at: number; rows: [string, string][] } | null>(KEY, null);
+  if (cached && Date.now() - cached.at < 864e5) return new Map(cached.rows);
+  try {
+    const { data, error } = await supabase.from('station_places').select('station_id,place_id').not('place_id', 'is', null).limit(5000);
+    if (error) throw error;
+    const rows = (data as { station_id: string; place_id: string }[]).map((r) => [r.station_id, r.place_id] as [string, string]);
+    await setMeta(KEY, { at: Date.now(), rows });
+    return new Map(rows);
+  } catch {
+    return new Map(cached?.rows ?? []);
+  }
 }

@@ -318,6 +318,10 @@
 .pl2-acts button { height: 30px; min-width: 30px; border: 0; border-radius: 15px; background: transparent; color: var(--on-mata); display: grid; place-items: center; }
 .pl2-acts .go { padding: 0 14px; background: #C3F25C; color: #0E3B2E; font-size: 13px; font-weight: 700; }
 
+/* avaliações do Google na ficha */
+.tl2-btn { border: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; box-shadow: inset 0 0 0 1.5px var(--field); }
+.tl2-btn[aria-expanded="true"] { box-shadow: inset 0 0 0 2px var(--link); }
+.tl2-btn span:first-child { display: inline-flex; align-items: center; gap: 3px; color: var(--link); font-weight: 600; }
 /* ---------- ficha do posto ---------- */
 .v2 .price-grid { background: var(--mata); border: 0; }
 .v2 .price-grid .pc { border-left-color: #23574A; padding: 14px 16px 16px; }

@@ -18,10 +18,11 @@ o rendimento medido do combustível e avaliações de um toque, além da fiscali
   - `ratings`: avaliações, uma por abastecimento, só do próprio e até 30 dias depois; na média vale a data do abastecimento. Nota de 1 a 5 estrelas, bomba, atendimento, banheiro e "como o carro andou depois" (`after_effect`), que é sempre sobre o combustível daquele abastecimento: o app pergunta no abastecimento seguinte (sobre o posto anterior), pelo histórico, no Início a partir do dia seguinte e por notificação às 19h do dia seguinte (`src/depois.ts`).
   - `price_reports`: preço visto na bomba, informado sem abastecer (um por pessoa, posto, combustível e dia; faixa plausível e até 30 por dia). Na rede sai como "informado" e só quando não há preço de abastecimento na janela; só a própria conta vê as suas linhas.
   - `station_live`: números da rede por posto. São só agregados, recalculados a cada 5 min por `rede_refresh()` (pg_cron) a partir de quem aceitou contribuir.
+  - `station_places`: posto da ANP (CNPJ) → `place_id` do Google, na Grande Florianópolis. Só o id é guardado (os termos do Google permitem guardar o place_id sem prazo; nota, nome e avaliações vêm do Google na hora). A função `postos-ligar` (pg_cron, todo dia às 03:17) confere 80 postos por vez e revê cada um a cada 30 dias. Leitura pública; só a chave de serviço grava.
   - Limites de publicação: rendimento com 5 pessoas e 15 tanques; cada item da avaliação e o "depois" com 3 respostas; estrelas com 5 notas; preço dos últimos 7 dias.
   - Lembretes: `push_subscriptions` (inscrições Web Push, só da própria conta), `push_keys` (chaves VAPID e segredo do envio, gerados no servidor, só a chave de serviço lê), `push_reminders` (um lembrete por abastecimento). O pg_cron chama a função `lembretes` às 19h de Brasília.
   - Funções:
-    - `postos-google`: notas, fotos e sugestões de endereço, com cota diária por conta.
+    - `postos-google`: notas, fotos e sugestões de endereço, nota de um posto pelo `place_id` (`lugar`) e as até 5 avaliações do Google quando a pessoa toca na nota (`avaliacoes`, nada é guardado), com cota diária por conta.
     - `excluir-conta`: apaga a conta e tudo dela (só pelo próprio app, nunca por app conectado).
     - `relato`: problema ou sugestão enviado pelo Perfil; guarda em `feedback` (só o dono lê, pelo painel) e manda e-mail pelo Resend.
     - `lembretes`: `GET …/chave` devolve a chave pública VAPID; `POST` envia os lembretes devidos e só aceita o segredo que o banco manda. A notificação não leva conteúdo; o texto é fixo no `public/push-sw.js`.

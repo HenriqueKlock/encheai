@@ -774,3 +774,23 @@ a.next-card { text-decoration: none; }
 .doc li b { color: var(--ink); }
 .row.batch .mid .a, .row.batch .mid .b { white-space: normal; overflow: visible; }
 .policy-card { display: flex; flex-direction: column; gap: 8px; }
+
+/* avaliações do Google na ficha (os dois visuais) */
+.grv { gap: 12px; }
+.grv-h { display: flex; justify-content: space-between; align-items: center; }
+.grv-h b { font-size: 16px; }
+.grv-x { width: 36px; height: 36px; margin: -6px -6px -6px 0; border: 0; border-radius: 18px; background: none; color: var(--muted); display: grid; place-items: center; }
+.grv-sum { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.grv-sum b { font-size: 34px; letter-spacing: -.03em; line-height: 1; }
+.grv-sum > span:last-child { font-size: 13px; color: var(--muted); }
+.v2 .grv-sum b { font-family: var(--display); font-weight: 800; }
+.rv-st { color: var(--star); letter-spacing: 1px; font-size: 14px; }
+.rv-st i { font-style: normal; color: var(--line); }
+.grv-rec { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: 14px; background: var(--soft); font-size: 13px; line-height: 1.4; }
+.grv-rec.old { background: var(--warn-bg); color: var(--warn-ink); }
+.grv-rec svg { flex: none; width: 18px; height: 18px; color: var(--warn-icon); }
+.rv { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 1px solid var(--line-2); }
+.rv-h { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.rv-t { margin: 0; font-size: 14px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.rv-t.full { -webkit-line-clamp: unset; display: block; }
+.rv-a { font-size: 12px; color: var(--muted); text-decoration: none; }

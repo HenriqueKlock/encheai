@@ -3,6 +3,9 @@
 //  - mode "posto":   procura um posto específico pelo endereço (quando o "nearby" não achou);
 //  - mode "address": busca de endereço para cadastrar casa e trabalho;
 //  - mode "photo":   link temporário de uma foto do posto (sem expor a chave);
+//  - mode "lugar":   nota e dados de um posto já ligado ao Google (pelo place_id, sem busca por texto);
+//  - mode "avaliacoes": até 5 avaliações do Google (as que ele escolhe), com data, e o link para ver todas
+//    no Google Maps. Só quando a pessoa toca na nota; nada disso é guardado;
 //  - mode "autocomplete" + "details": sugestões enquanto a pessoa digita o endereço (Places Autocomplete,
 //    com token de sessão: as sugestões e o detalhe escolhido contam como uma sessão no Google).
 // A chave fica no segredo GOOGLE_MAPS_API_KEY; sem ela, devolve { configured: false }.
@@ -57,7 +60,7 @@ async function withinQuota(req: Request, fn: string, max: number): Promise<boole
   }
 }
 
-const LIMITS: Record<string, number> = { nearby: 80, posto: 30, address: 30, photo: 30, autocomplete: 150, details: 30 };
+const LIMITS: Record<string, number> = { nearby: 80, posto: 30, address: 30, photo: 30, autocomplete: 150, details: 30, lugar: 80, avaliacoes: 30 };
 
 const inBrazil = (lat: number, lon: number) => lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34;
 
@@ -125,6 +128,32 @@ Deno.serve(async (req) => {
     }
     const d = await r.json();
     return json(200, { configured: true, uri: d.photoUri ?? null });
+  }
+
+  if (mode === 'lugar' || mode === 'avaliacoes') {
+    const id = String(b.id ?? '');
+    if (!/^[A-Za-z0-9_-]{10,300}$/.test(id)) return json(400, { error: 'Lugar inválido.' });
+    if (!(await withinQuota(req, 'google_' + mode, LIMITS[mode]))) return json(429, { error: mode === 'avaliacoes' ? 'Limite diário de avaliações do Google atingido para esta conta. Tente amanhã.' : 'Limite diário de buscas no Google atingido para esta conta. Tente amanhã.' });
+    const mask = mode === 'lugar'
+      ? STATION_FIELDS.replace(/places\./g, '')
+      : 'rating,userRatingCount,reviews,googleMapsUri,googleMapsLinks';
+    const r = await fetch('https://places.googleapis.com/v1/places/' + id + '?languageCode=pt-BR&regionCode=BR', { headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': mask } });
+    if (!r.ok) {
+      console.error(JSON.stringify({ event: 'postos-google-error', mode, status: r.status }));
+      return json(r.status === 429 ? 429 : 502, { error: r.status === 429 ? 'A cota diária do Google do app acabou. Volta a funcionar amanhã.' : 'O Google não respondeu agora.' });
+    }
+    const p = await r.json();
+    if (mode === 'lugar') return json(200, { configured: true, places: [station(p)] });
+    const reviews = (p.reviews ?? []).map((v: any) => ({
+      rating: typeof v.rating === 'number' ? v.rating : null,
+      time: v.publishTime ?? null,
+      rel: v.relativePublishTimeDescription ?? '',
+      text: v.text?.text ?? v.originalText?.text ?? '',
+      author: v.authorAttribution?.displayName ?? '',
+      authorUri: v.authorAttribution?.uri ?? '',
+      uri: v.googleMapsUri ?? '',
+    }));
+    return json(200, { configured: true, rating: typeof p.rating === 'number' ? p.rating : null, count: p.userRatingCount ?? 0, uri: p.googleMapsUri ?? '', reviewsUri: p.googleMapsLinks?.reviewsUri ?? '', reviews });
   }
 
   const token = String(b.session ?? '');

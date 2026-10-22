@@ -7,7 +7,7 @@ import {
   type Recommendation, type Station, type StationLive, type StationRow, type StationsFile, type StationUse,
 } from '../postos';
 import { gps, loadStations, route, type FoundPlace, type Route } from '../lugares';
-import { currentSession, googlePhoto, googlePlaces, setPlace, type Places } from '../sync';
+import { currentSession, googlePhoto, googlePlaces, googleReviews, setPlace, stationPlaces, type GoogleReviews, type Places } from '../sync';
 import { fetchNetwork, invalidateNetwork, network } from '../rede';
 import { plausible, reportPrices, reportedAsOwn } from '../precos';
 import { getMeta, setMeta, stamp, db, type FuelLog } from '../db';
@@ -100,13 +100,32 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     }
   }
   const googleDone = new Set<string>();
+  /** Postos que o servidor já ligou ao Google (CNPJ → place_id), na Grande Florianópolis. */
+  let placeOf = new Map<string, string>();
+  const toMatch = (g: GoogleStation): GoogleMatch => ({ id: g.id, name: g.name, rating: g.rating, count: g.count, lat: g.lat, lon: g.lon, photo: g.photo ?? null });
+  /** Liga lugares do Google aos postos: pelo place_id quando o servidor já ligou; pela comparação nos outros. */
+  function linkPlaces(places: GoogleStation[], near: Station[]): Map<string, GoogleMatch> {
+    const out = new Map<string, GoogleMatch>();
+    const byPlace = new Map([...placeOf].map(([c, p]) => [p, c]));
+    const rest: GoogleStation[] = [];
+    for (const g of places) {
+      const c = byPlace.get(g.id);
+      if (c) out.set(c, toMatch(g));
+      else rest.push(g);
+    }
+    for (const [c, m] of matchGoogle(rest, near.filter((s) => !out.has(s.c) && !placeOf.has(s.c)))) out.set(c, m);
+    return out;
+  }
   let googleOn: boolean | null = null;
 
   async function ensureFile() {
     if (file) return file;
     file = await loadStations();
     loadFailed = !file;
-    if (file) await restoreGoogle();
+    if (file) {
+      placeOf = await stationPlaces();
+      await restoreGoogle();
+    }
     return file;
   }
 
@@ -138,7 +157,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     void ids;
     // casa só com postos perto de algum lugar do Google (rápido mesmo com 2 mil postos)
     const near = file.postos.filter((s) => all.some((g) => Math.abs(g.lat - s.la) < 0.03 && Math.abs(g.lon - s.lo) < 0.03));
-    addMatches(matchGoogle(all, near));
+    addMatches(linkPlaces(all, near));
   }
   async function gError(e: unknown) {
     const res = (e as { context?: Response })?.context;
@@ -173,7 +192,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     }
     const bb = bboxAround(snap, r + 3);
     const near = file.postos.filter((s) => s.la > bb.s && s.la < bb.n && s.lo > bb.w && s.lo < bb.e && !gmatch.has(s.c));
-    addMatches(matchGoogle(places, near));
+    addMatches(linkPlaces(places, near));
     render();
     renderHome();
   }
@@ -675,7 +694,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     }
     const got = places;
     const near = file.postos.filter((s) => got.some((g) => Math.abs(g.lat - s.la) < 0.02 && Math.abs(g.lon - s.lo) < 0.02));
-    const m = matchGoogle(got, near);
+    const m = linkPlaces(got, near);
     addMatches(m);
     if (!m.size) toast('O Google não achou um posto da lista da ANP com esse nome por perto.');
     render();
@@ -884,6 +903,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   function openPosto(cnpj: string) {
     const s = stations().find((x) => x.c === cnpj);
     if (!s) return;
+    if (shown?.c !== s.c) reviewsOpen = null;
     shown = s;
     renderPosto(s);
     openSheet('posto-sheet');
@@ -961,7 +981,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       : '<span class="hint">' + (rat?.n ? pl(rat.n, 'avaliação', 'avaliações') + ' até agora; cada item aparece com 3 respostas.' : 'Ainda sem avaliações. Depois de abastecer aqui, o app pergunta em um toque.') + '</span>';
     const ratCard =
       '<div class="card"><div class="card-head"><span>Quem abasteceu avaliou</span><span class="hint">' + (rat?.n ? pl(rat.n, 'avaliação', 'avaliações') + ' · 6 meses' : '') + '</span></div>' + ratBody +
-      '<span class="hint">No Google: ' + (g ? fmt(g.rating, 1) + ' em ' + g.count.toLocaleString('pt-BR') + ' avaliações' : esc(gStatus(s.c, false))) + '</span></div>';
+      '<span class="hint">No Google: ' + (g ? fmt(g.rating, 1) + ' em ' + g.count.toLocaleString('pt-BR') + ' avaliações' : esc(gStatus(s.c, false))) + '</span>' +
+      (gm ? '<button type="button" class="link-btn" data-grv style="align-self:flex-start;padding-left:0">' + (reviewsOpen === s.c ? 'Esconder avaliações do Google' : 'Ver avaliações do Google') + '</button>' : '') + '</div>' + reviewsBox(s);
 
     // Confiabilidade (ANP)
     const lvl = rel.level === 'ok' ? 'Confiável' : rel.level === 'atencao' ? 'Atenção' : 'Evitar';
@@ -1040,7 +1061,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       const whyBox =
         '<div class="card why2"><b class="why2-t">De onde vem o ' + fmt(rel.score, 1) + '</b><div class="why2-tiles">' +
         tile('ANP', fmt(rel.anp, 1), rel.infractions ? pl(rel.infractions, 'infração', 'infrações') : s.f ? 'sem infração' : 'sem registro') +
-        tile('Google', g ? fmt(g.rating, 1) : '–', gSub) +
+        (gm ? '<button type="button" class="tl2 tl2-btn" data-grv aria-expanded="' + (reviewsOpen === s.c) + '"><span>Google ' + CHEV_S + '</span><b>' + (g ? fmt(g.rating, 1) : '–') + '</b><span>' + gSub + '</span></button>' : tile('Google', g ? fmt(g.rating, 1) : '–', gSub)) +
         tile('Quem abasteceu', stars ? fmt(stars.avg, 1) + '★' : '–', stars ? pl(stars.n, 'nota', 'notas') : rat?.n ? pl(rat.n, 'avaliação', 'avaliações') : 'sem notas') + '</div>' +
         (chips.length ? '<div class="why2-chips">' + chips.map((c) => '<span class="' + (c.p >= 70 ? 'ok' : 'warn') + '">' + c.label + ' ' + c.p + '%</span>').join('') + '</div>' : '') +
         (rel.netWarn ? '<p class="rec-warn">' + ICON.warn + '<span>' + (rel.netWarn === 'rendimento' ? 'Os tanques daqui rendem abaixo do normal para quem usa o app.' : rel.netWarn === 'falhas' ? 'Vários relatos de carro falhando depois de abastecer aqui.' : 'Muita gente disse que a bomba não marcou certo.') + '</span></p>' : '') +
@@ -1050,7 +1071,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         ? '<div class="card"><span class="b15">Você aqui</span>' + (v ? '<span class="hint ' + v.tone + '">' + esc(v.text) + '</span>' : '') +
           (mine.length ? '<span class="hint">' + pl(mine.length, 'abastecimento', 'abastecimentos') + ', o último em ' + dm(mine[0].date) + (u?.kml ? ' · ' + fmt(u.kml, 1) + ' km/l' : '') + '</span>' : '') + linkOffer(s) + '</div>'
         : '';
-      $('posto-body').innerHTML = head + yieldBox + whyBox +
+      $('posto-body').innerHTML = head + yieldBox + whyBox + reviewsBox(s) +
         (perKm ? '<p class="hint">' + perKm + '</p>' : '') + me +
         '<div class="card"><div class="card-head"><span>Como chegar</span><span class="hint" id="ps-eta"></span></div><div class="ps-map" id="ps-map" role="img" aria-label="Mapa com o posto e o caminho até ele"></div><span class="hint" id="ps-map-note"></span></div>';
       return;
@@ -1066,6 +1087,61 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       (extra ? '<p class="hint" style="margin-top:-6px">Também: ' + esc(extra) + '</p>' : '') +
       yieldCard + ratCard + relCard + meCard +
       '<div class="card"><div class="card-head"><span>Como chegar</span><span class="hint" id="ps-eta"></span></div><div class="ps-map" id="ps-map" role="img" aria-label="Mapa com o posto e o caminho até ele"></div><span class="hint" id="ps-map-note"></span></div>';
+  }
+
+  /* ---------- avaliações do Google (só quando a pessoa toca na nota; ficam só na memória) ---------- */
+  let reviewsOpen: string | null = null;
+  const reviews = new Map<string, GoogleReviews | 'carregando' | 'erro'>();
+  function reviewsBox(s: Station) {
+    const gm = gmatch.get(s.c);
+    if (reviewsOpen !== s.c || !gm) return '';
+    const d = reviews.get(gm.id);
+    const head = '<div class="grv-h"><b>Avaliações no Google</b><button type="button" class="grv-x" data-grv aria-label="Fechar">' + XS + '</button></div>';
+    if (!d || d === 'carregando') return '<div class="card grv" id="grv">' + head + '<span class="hint">Carregando as avaliações do Google…</span></div>';
+    if (d === 'erro') return '<div class="card grv" id="grv">' + head + '<span class="hint">O Google não respondeu agora.</span><button type="button" class="btn sm" data-grv-retry>Tentar de novo</button></div>';
+    const today = todayISO();
+    const list = d.reviews.slice().sort((a, b) => (b.time ?? '').localeCompare(a.time ?? ''));
+    const newest = list.find((r) => r.time);
+    const age = newest?.time ? ageDays(newest.time.slice(0, 10), today) : null;
+    const dmy = (t: string) => t.slice(8, 10) + '/' + t.slice(5, 7) + '/' + t.slice(0, 4);
+    const stars = (n: number | null) => '<span class="rv-st" aria-label="' + (n ?? 0) + ' de 5">' + '★★★★★'.slice(0, Math.round(n ?? 0)) + '<i>' + '★★★★★'.slice(Math.round(n ?? 0)) + '</i></span>';
+    const recency = newest?.time
+      ? '<p class="grv-rec' + (age! > 180 ? ' old' : '') + '">' + (age! > 180 ? ICON.warn : '') + '<span>A mais recente das ' + list.length + ' que o Google mostra é de <b>' + esc(newest.rel || dmy(newest.time)) + '</b> (' + dmy(newest.time) + ').' + (age! > 180 ? ' Pode ter mudado algo no posto desde então: veja as mais recentes no Google Maps.' : '') + '</span></p>'
+      : '<p class="grv-rec">O Google não mostrou avaliações escritas deste posto.</p>';
+    return '<div class="card grv" id="grv">' + head +
+      '<div class="grv-sum"><b>' + (d.rating != null ? fmt(d.rating, 1) : '–') + '</b>' + stars(d.rating) + '<span>' + d.count.toLocaleString('pt-BR') + ' avaliações</span></div>' + recency +
+      list.map((r) => '<div class="rv"><div class="rv-h">' + stars(r.rating) + '<span>' + esc(r.rel) + (r.time ? ' · ' + dmy(r.time) : '') + '</span></div>' +
+        (r.text ? '<p class="rv-t">' + esc(r.text) + '</p>' : '') +
+        (r.author ? (r.authorUri ? '<a class="rv-a" href="' + esc(r.authorUri) + '" target="_blank" rel="noopener">' + esc(r.author) + '</a>' : '<span class="rv-a">' + esc(r.author) + '</span>') : '') + '</div>').join('') +
+      ((d.reviewsUri || d.uri) ? '<a class="btn block" href="' + esc(d.reviewsUri || d.uri) + '" target="_blank" rel="noopener">Ver todas no Google Maps</a>' : '') +
+      '<span class="hint">Avaliações do Google. Ele mostra até 5, escolhidas por relevância; no Google Maps dá para ordenar pelas mais recentes. Nada disso fica guardado no app.</span></div>';
+  }
+  async function toggleReviews(st: Station, retry = false) {
+    const gm = gmatch.get(st.c);
+    if (!gm) return;
+    if (!retry && reviewsOpen === st.c) { reviewsOpen = null; return rerenderPosto(st); }
+    reviewsOpen = st.c;
+    const cur = reviews.get(gm.id);
+    if (!cur || cur === 'erro') {
+      reviews.set(gm.id, 'carregando');
+      rerenderPosto(st, true);
+      try {
+        const d = await googleReviews(gm.id);
+        reviews.set(gm.id, d ?? 'erro');
+      } catch (e) {
+        reviews.set(gm.id, 'erro');
+        await gError(e);
+      }
+    }
+    if (shown?.c === st.c && reviewsOpen === st.c) rerenderPosto(st, true);
+  }
+  function rerenderPosto(st: Station, scroll = false) {
+    const body = document.querySelector<HTMLElement>('#posto-sheet .sheet-body');
+    const y = body?.scrollTop ?? 0;
+    renderPosto(st);
+    if (body) body.scrollTop = y;
+    setTimeout(() => showMap(st), 50);
+    if (scroll) setTimeout(() => document.getElementById('grv')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
   }
 
   /** "Informar preço": quem está no posto conta o preço da bomba, sem precisar abastecer. */
@@ -1091,6 +1167,13 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const el = e.target as HTMLElement;
     if (e.key === 'Enter' && el.matches('.pl2.edit input')) { e.preventDefault(); el.closest('.pl2')?.querySelector<HTMLButtonElement>('[data-pr="send"]')?.click(); }
     if (e.key === 'Escape' && el.matches('.pl2.edit input')) el.closest('.pl2')?.querySelector<HTMLButtonElement>('[data-pr="cancel"]')?.click();
+  });
+  $('posto-body').addEventListener('click', (e) => {
+    const el = e.target as HTMLElement;
+    if (!shown) return;
+    el.closest('.rv-t')?.classList.toggle('full');
+    if (el.closest('[data-grv-retry]')) return void toggleReviews(shown, true);
+    if (el.closest('[data-grv]')) return void toggleReviews(shown);
   });
   $('posto-body').addEventListener('click', async (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-pr]');
@@ -1250,6 +1333,23 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     }
   }
   async function lookupInner(s: Station) {
+    const pid = placeOf.get(s.c);
+    if (pid) {
+      // já ligado pelo servidor: pede a nota direto pelo id, sem busca por texto
+      const key = 'lugar:' + s.c;
+      let places = await gGet(key);
+      if (!places && !gBlocked) {
+        try {
+          const res = await googlePlaces<GoogleStation>({ mode: 'lugar', id: pid });
+          googleOn = res.configured;
+          if (res.configured) { places = res.places; await gPut(key, places); }
+        } catch (e) {
+          await gError(e);
+        }
+      }
+      if (places?.[0]) addMatches(new Map([[s.c, toMatch(places[0])]]));
+      return afterLookup(s);
+    }
     const byAddr = await searchFor('posto:' + s.c, 'posto de combustível ' + s.e + ', ' + (s.br ? s.br + ', ' : '') + s.m + ' - SC', s);
     let hit = byAddr ? bestForStation(byAddr, s) : null;
     if (!hit && byAddr && nameTokens(s.n).length) {
@@ -1257,6 +1357,9 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       hit = byName ? bestForStation(byName, s) : null;
     }
     if (hit) addMatches(new Map([[s.c, hit]]));
+    afterLookup(s);
+  }
+  function afterLookup(s: Station) {
     gPending.delete(s.c);
     if (shown?.c === s.c) {
       renderPosto(s);
@@ -1455,6 +1558,7 @@ const BACK = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"
 const SHIELD_OK = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/><path d="M8.8 12.2l2.2 2.2 4.4-4.6" stroke="var(--sh-in, #C3F25C)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const INFO = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/></svg>';
 const LUPA = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>';
+const CHEV_S = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>';
 const XS = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 const PLUS = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
 const SHIELD14 = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/></svg>';
