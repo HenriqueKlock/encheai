@@ -1048,6 +1048,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         '<div class="ps2-head"><div class="ps2-top"><button type="button" class="ps2-back" data-close aria-label="Voltar">' + BACK + '</button>' +
         '<span class="ps2-selo ' + rel.level + '">' + SHIELD_OK + fmt(rel.score, 1) + ' ' + lvlTxt + '</span></div>' +
         '<div class="ps2-name"><h2>' + brandBadge(s.b, 30) + esc(nm(s)) + '</h2><span>' + esc([s.e, dist].filter(Boolean).join(' · ')) + (s.pg === 'b' ? ' · local aproximado' : '') + '</span></div>' +
+        photoFig(s) +
         '<div class="ps2-plates">' + (car.model.fuels.includes('etanol') ? plate('etanol', row.eth) : '') + (car.model.fuels.includes('gasolina') ? plate('gasolina', row.gas) : '') + '</div></div>';
       // anel do rendimento
       let pctTxt = '–', frac = 0, ringTone = 'ok', yT = 'Rendimento sem medição', yS = 'Cada tanque cheio registrado aqui conta: o app compara com o consumo normal de cada pessoa.';
@@ -1091,10 +1092,12 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       $('posto-body').innerHTML = head + yieldBox + whyBox + reviewsBox(s) + placeCard(s) +
         (perKm ? '<p class="hint">' + perKm + '</p>' : '') + me +
         '<div class="card"><div class="card-head"><span>Como chegar</span><span class="hint" id="ps-eta"></span></div><div class="ps-map" id="ps-map" role="img" aria-label="Mapa com o posto e o caminho até ele"></div><span class="hint" id="ps-map-note"></span></div>';
+      const ph = gmatch.get(s.c)?.photo;
+      if (ph && photoUris.get(ph.name) === undefined) void showPhoto(ph);
       return;
     }
     $('posto-body').innerHTML =
-      (gm?.photo ? '<figure class="ps-photo" id="ps-photo"><div class="ph"></div><figcaption>Foto: ' + esc(gm.photo.author || 'Google') + ' · Google</figcaption></figure>' : '') +
+      (gm?.photo ? '<figure class="ps-photo" id="ps-photo" data-name="' + esc(gm.photo.name) + '"><div class="ph"></div><figcaption>Foto: ' + esc(gm.photo.author || 'Google') + ' · Google</figcaption></figure>' : '') +
       '<div class="ps-head"><h2>' + esc(nm(s)) + '</h2>' + (gm && gm.name !== s.n ? '<span class="hint">No cadastro da ANP: ' + esc(s.n) + '</span>' : '') +
       '<span class="hint">' + [s.e, s.br, s.m].filter(Boolean).map(esc).join(', ') + '</span>' +
       '<span class="hint">' + [s.b === 'Bandeira branca' ? 'bandeira branca' : s.b, dist].filter(Boolean).map(esc).join(' · ') + (s.pg === 'b' ? ' · localização aproximada' : '') + '</span></div>' +
@@ -1245,27 +1248,73 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     void s;
   }
 
+  /** Link temporário da foto (do Google), só na memória; null = sem foto ou não carregou. */
   const photoUris = new Map<string, string | null>();
+  const photoLoading = new Set<string>();
   async function showPhoto(ph: { name: string }) {
     let uri = photoUris.get(ph.name);
-    if (uri === undefined && !photoBlocked) {
+    if (uri === undefined) {
+      if (photoBlocked || photoLoading.has(ph.name)) return;
+      photoLoading.add(ph.name);
       try {
         uri = await googlePhoto(ph.name);
       } catch (e) {
         await gError(e, 'foto');
         uri = null;
+      } finally {
+        photoLoading.delete(ph.name);
       }
       photoUris.set(ph.name, uri ?? null);
     }
     const fig = document.getElementById('ps-photo');
-    if (!fig) return;
+    if (!fig || fig.dataset.name !== ph.name) return;
     if (!uri) return fig.remove();
+    if (!fig.querySelector('.ph')) return;
     const img = new Image();
     img.alt = 'Foto do posto';
     img.decoding = 'async';
-    img.onload = () => fig.querySelector('.ph')?.replaceWith(img);
-    img.onerror = () => fig.remove();
+    img.onload = () => {
+      if (!isNovo()) return fig.querySelector('.ph')?.replaceWith(img);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ps2-ph';
+      b.dataset.photo = '';
+      b.setAttribute('aria-label', 'Ver a foto em tela cheia');
+      b.append(img);
+      fig.querySelector('.ph')?.replaceWith(b);
+    };
+    img.onerror = () => { photoUris.set(ph.name, null); fig.remove(); };
     img.src = uri;
+  }
+  /** Visual novo: foto do posto (do Google) logo abaixo do nome, com o crédito que o Google exige. */
+  function photoFig(s: Station) {
+    const ph = gmatch.get(s.c)?.photo;
+    if (!ph || photoUris.get(ph.name) === null) return '';
+    const uri = photoUris.get(ph.name);
+    const who = ph.author ? (ph.authorUri ? '<a href="' + esc(ph.authorUri) + '" target="_blank" rel="noopener">' + esc(ph.author) + '</a>' : esc(ph.author)) : 'Google';
+    return '<figure class="ps2-photo" id="ps-photo" data-name="' + esc(ph.name) + '">' +
+      (uri ? '<button type="button" class="ps2-ph" data-photo aria-label="Ver a foto em tela cheia"><img src="' + esc(uri) + '" alt="Foto do posto"></button>' : '<div class="ph"></div>') +
+      '<figcaption>Foto: ' + who + ' · Google</figcaption></figure>';
+  }
+  /** Foto em tela cheia: toque em qualquer lugar ou Esc fecha. */
+  function openLightbox(s: Station) {
+    const ph = gmatch.get(s.c)?.photo;
+    const uri = ph ? photoUris.get(ph.name) : null;
+    if (!ph || !uri) return;
+    const box = document.createElement('div');
+    box.className = 'lb';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', 'Foto de ' + nm(s));
+    box.innerHTML = '<img src="' + esc(uri) + '" alt="Foto de ' + esc(nm(s)) + '"><div class="lb-cap">' + esc(nm(s)) + ' · Foto: ' + esc(ph.author || 'Google') + ' · Google</div>' +
+      '<button type="button" class="lb-x" aria-label="Fechar a foto">' + XS + '</button>';
+    const back = document.activeElement as HTMLElement | null;
+    const close = () => { box.remove(); document.removeEventListener('keydown', key, true); back?.focus(); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); } };
+    box.addEventListener('click', close);
+    document.addEventListener('keydown', key, true);
+    document.body.append(box);
+    box.querySelector<HTMLButtonElement>('.lb-x')!.focus();
   }
 
   let map: import('leaflet').Map | null = null;
@@ -1525,6 +1574,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   $('posto-body').addEventListener('click', (e) => {
     const el = e.target as HTMLElement;
     if (!shown) return;
+    if (el.closest('[data-photo]')) return openLightbox(shown);
     if (el.closest('[data-gfix]')) return void openFix(shown);
     if (el.closest('[data-gok]')) { const gm = gmatch.get(shown.c); if (gm) void pickPlace(shown, gm.id); }
   });

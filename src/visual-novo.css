@@ -589,6 +589,23 @@
 
 /* ---------- computador (tela larga): navegação na lateral, Postos com lista ao lado do mapa,
    folhas como janelas no centro. No celular nada disto vale. ---------- */
+/* ficha: foto do posto (Google) abaixo do nome; toque abre em tela cheia */
+.ps2-photo { margin: 0; position: relative; }
+.ps2-photo .ph, .ps2-ph { display: block; width: 100%; height: 148px; border-radius: 18px; background: var(--mata-2); overflow: hidden; }
+.ps2-photo .ph { animation: pulse 1.2s ease-in-out infinite alternate; }
+.ps2-ph { all: unset; box-sizing: border-box; display: block; width: 100%; height: 148px; border-radius: 18px; overflow: hidden; cursor: zoom-in; }
+.ps2-ph:focus-visible { outline: 2px solid var(--broto); outline-offset: 2px; }
+.ps2-ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ps2-photo figcaption { position: absolute; right: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 2px 8px; border-radius: 10px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: auto; }
+.ps2-photo figcaption a { color: inherit; }
+.lb { position: fixed; inset: 0; z-index: 2000; background: rgba(0, 0, 0, .94); display: flex; align-items: center; justify-content: center; padding: calc(56px + env(safe-area-inset-top, 0px)) 0 calc(48px + env(safe-area-inset-bottom, 0px)); cursor: zoom-out; animation: lb-in .18s ease-out; }
+.lb img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.lb-cap { position: absolute; left: 16px; right: 16px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); color: #E6E6E6; font-size: 13px; text-align: center; }
+.lb-x { all: unset; box-sizing: border-box; position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); right: 12px; width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: #fff; background: rgba(255, 255, 255, .14); cursor: pointer; }
+.lb-x:focus-visible { outline: 2px solid #fff; }
+@keyframes lb-in { from { opacity: 0; } to { opacity: 1; } }
+@media (min-width: 960px) { .ps2-photo .ph, .ps2-ph { height: 180px; } }
+
 /* ficha: este posto no Google (confirmar ou corrigir a ligação) */
 .gp2 { display: flex; flex-direction: column; gap: 4px; }
 .gp2-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; font-weight: 600; color: var(--muted); }
