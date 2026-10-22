@@ -551,19 +551,26 @@ def fetch_osm(uf: str) -> list[dict] | None:
     return None
 
 
+def osm_detail(p: dict, la, lo, prec, o: dict) -> dict:
+    """Evidências de que um posto do OpenStreetMap é este posto da ANP (endereço, nome, bandeira, distância)."""
+    num = digits(p.get('num'))
+    street_ok = len(street_tokens(p.get('end')) & street_tokens(o['street'])) >= 1
+    addr = bool(num) and digits(o['num']) == num and street_ok
+    d = dist_km(la, lo, o['la'], o['lo']) if la is not None else None
+    ov = len(name_tokens((p.get('fantasia') or '') + ' ' + (p.get('razao') or '')) & name_tokens(o['name']))
+    return {'d': d, 'addr': addr, 'street': street_ok, 'ov': ov, 'prec': prec}
+
+
 def osm_score(p: dict, la, lo, prec, o: dict) -> float:
     """O quanto um posto do OpenStreetMap parece ser este posto da ANP (endereço, nome, bandeira, distância)."""
-    num = digits(p.get('num'))
-    num_ok = bool(num) and digits(o['num']) == num
-    street_ok = len(street_tokens(p.get('end')) & street_tokens(o['street'])) >= 1
-    addr = num_ok and street_ok
+    det = osm_detail(p, la, lo, prec, o)
+    addr, street_ok, ov, d = det['addr'], det['street'], det['ov'], det['d']
     if la is None:
         # posto sem coordenada: só pelo endereço completo, na mesma cidade
         return 4.0 if addr and o['city'] and norm(o['city']) == norm(p.get('mun')) else 0
-    d = dist_km(la, lo, o['la'], o['lo'])
-    if d > (5 if addr else {'n': 0.35, 'r': 1.5, 'b': 3.0}.get(prec, 1.0)):
+    # sem o endereço completo, ponto aproximado não pode ir longe: redes (Galo, Angeloni…) têm vários postos perto
+    if d > (5 if addr else {'n': 0.35, 'r': 0.8, 'b': 1.2}.get(prec, 1.0)):
         return 0
-    ov = len(name_tokens((p.get('fantasia') or '') + ' ' + (p.get('razao') or '')) & name_tokens(o['name']))
     ob = brand_of(o['brand'] + ' ' + o['name'])
     pb = display_flag(p.get('bandeira', ''))
     pb = pb if pb in ('Shell', 'Ipiranga', 'Petrobras', 'Ale') else None
@@ -762,13 +769,28 @@ def main():
         log(f'  {len(osm)} postos no OpenStreetMap; {len(osm_match)} ligados a postos da ANP')
 
     def osm_use(cnpj, g):
-        """(nome, ponto) do OpenStreetMap para este posto: o ponto só quando a ligação é forte ou o nosso é aproximado."""
+        """
+        (nome, ponto) do OpenStreetMap para este posto.
+        Nome: só com evidência além da vizinhança (endereço, nome parecido, mesma rua bem perto) e só se diz algo
+        além da bandeira ("Shell", "Posto Ipiranga" não ajudam). Ponto: só quando o nosso é aproximado ou a
+        ligação é forte, e sem saltos grandes (a não ser com endereço completo e nome parecido).
+        """
         m = osm_match.get(cnpj)
         if not m:
             return None, None
         o, s = m
-        point = (o['la'], o['lo']) if (g.get('p') in (None, 'r', 'b') or s >= 3.5) else None
-        return (o['name'] or None), point
+        p = cad[cnpj]
+        has_pt = g.get('p') is not None
+        det = osm_detail(p, g.get('la') if has_pt else None, g.get('lo') if has_pt else None, g.get('p'), o)
+        d = det['d']
+        name_ok = bool(name_tokens(o['name'])) and (det['addr'] or det['ov'] > 0 or (det['street'] and d is not None and d < 0.1) or (d is not None and d < 0.05))
+        if not has_pt:
+            point = (o['la'], o['lo'])
+        elif d <= {'n': 0.3, 'r': 0.8, 'b': 1.2}.get(g['p'], 0.3) or (det['addr'] and det['ov'] > 0 and d <= 3):
+            point = (o['la'], o['lo']) if (g['p'] in ('r', 'b') or s >= 3.5) else None
+        else:
+            point = None
+        return (o['name'] if name_ok else None), point
 
     if a.osm == 'relatorio' and osm_match:
         rel = []
@@ -776,7 +798,7 @@ def main():
             p = cad[cnpj]
             g = geo_cache.get(cnpj) or {}
             nome, ponto = osm_use(cnpj, g)
-            rel.append({'c': cnpj, 'mun': title(p['mun']), 'anp': display_name(p), 'osm': o['name'], 'nota': round(s, 2), 'antes': g.get('p'),
+            rel.append({'c': cnpj, 'mun': title(p['mun']), 'anp': display_name(p), 'osm': o['name'], 'nome': nome, 'nota': round(s, 2), 'antes': g.get('p'),
                         'move_m': round(dist_km(g['la'], g['lo'], ponto[0], ponto[1]) * 1000) if ponto and g.get('la') is not None else None,
                         'ganha_ponto': g.get('p') is None and ponto is not None})
         save(f'osm-relatorio-{"-".join(sorted(ufs))}.json', {'em': today.isoformat(), 'ligados': len(rel), 'postos': rel})
