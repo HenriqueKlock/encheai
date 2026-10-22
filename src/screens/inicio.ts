@@ -140,12 +140,25 @@ export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel
     // quem nunca usou o app vê a política nas boas-vindas; o aviso é para quem já usava
     if (seen >= POLICY_VERSION || !S.logs.length) { el.innerHTML = ''; return; }
     el.innerHTML = '<div class="card policy-card"><span class="b15">Atualizamos a privacidade</span><span class="hint">Os números agregados da rede (médias por posto e região, sem identificar ninguém) podem ser usados em relatórios e parcerias. Nunca vendemos dados pessoais. Se preferir ficar de fora, desligue "Contribuir com a rede" no Perfil.</span>' +
-      '<div class="btn-row"><a class="btn sm" href="#/privacidade" data-policy-ok>Ler a política</a><button type="button" class="btn sm primary" data-policy-ok>Entendi</button></div></div>';
+      '<div class="btn-row"><a class="btn sm" href="#/privacidade">Ler a política</a><button type="button" class="btn sm primary" data-policy-ok>Entendi</button></div></div>';
   }
+  const policyPending = () => { try { return (localStorage.getItem(POLICY_SEEN) ?? '') < POLICY_VERSION && S.logs.length > 0; } catch { return false; } };
+  const policyOk = () => { try { localStorage.setItem(POLICY_SEEN, POLICY_VERSION); } catch { /* sem acesso */ } };
   $('home-policy').addEventListener('click', (e) => {
     if (!(e.target as HTMLElement).closest('[data-policy-ok]')) return;
-    try { localStorage.setItem(POLICY_SEEN, POLICY_VERSION); } catch { /* sem acesso */ }
+    policyOk();
     $('home-policy').innerHTML = '';
+  });
+  // quem foi ler a política pelo aviso confirma no fim da própria página
+  onShow('privacidade', () => {
+    const box = $('policy-ack');
+    box.innerHTML = policyPending() ? '<div class="card policy-card"><span class="hint">Leu a atualização? Confirme para o aviso sair do Início.</span><button type="button" class="btn primary" data-policy-ack>Entendi</button></div>' : '';
+  });
+  $('policy-ack').addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-policy-ack]')) return;
+    policyOk();
+    $('policy-ack').innerHTML = '';
+    location.hash = '#/inicio';
   });
 
   function renderRede() {
