@@ -1092,13 +1092,14 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   /* ---------- avaliações do Google (só quando a pessoa toca na nota; ficam só na memória) ---------- */
   let reviewsOpen: string | null = null;
   const reviews = new Map<string, GoogleReviews | 'carregando' | 'erro'>();
+  let reviewsErr = '';
   function reviewsBox(s: Station) {
     const gm = gmatch.get(s.c);
     if (reviewsOpen !== s.c || !gm) return '';
     const d = reviews.get(gm.id);
     const head = '<div class="grv-h"><b>Avaliações no Google</b><button type="button" class="grv-x" data-grv aria-label="Fechar">' + XS + '</button></div>';
     if (!d || d === 'carregando') return '<div class="card grv" id="grv">' + head + '<span class="hint">Carregando as avaliações do Google…</span></div>';
-    if (d === 'erro') return '<div class="card grv" id="grv">' + head + '<span class="hint">O Google não respondeu agora.</span><button type="button" class="btn sm" data-grv-retry>Tentar de novo</button></div>';
+    if (d === 'erro') return '<div class="card grv" id="grv">' + head + '<span class="hint">' + esc(reviewsErr || 'O Google não respondeu agora.') + '</span><button type="button" class="btn sm" data-grv-retry>Tentar de novo</button></div>';
     const today = todayISO();
     const list = d.reviews.slice().sort((a, b) => (b.time ?? '').localeCompare(a.time ?? ''));
     const newest = list.find((r) => r.time);
@@ -1129,8 +1130,12 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         const d = await googleReviews(gm.id);
         reviews.set(gm.id, d ?? 'erro');
       } catch (e) {
+        // erro só das avaliações: mostra no painel, sem desligar o resto do Google no app
         reviews.set(gm.id, 'erro');
-        await gError(e);
+        reviewsErr = '';
+        const res = (e as { context?: Response })?.context;
+        try { if (res) reviewsErr = (await res.json()).error ?? ''; } catch { /* sem corpo */ }
+        if (!res) reviewsErr = (e as Error)?.message ?? '';
       }
     }
     if (shown?.c === st.c && reviewsOpen === st.c) rerenderPosto(st, true);
