@@ -757,3 +757,10 @@ a.next-card { text-decoration: none; }
 .pr-card .field span { display: inline-flex; align-items: center; gap: 6px; }
 .price-grid .pc .d.seen { color: var(--muted); }
 .pr-card .field > span { justify-content: flex-start; }
+.list-card.flat { box-shadow: none; border: 1px solid var(--line-2); }
+.row.batch { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.row.batch .mid { flex: 1; }
+.doc ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.doc li { font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.doc li b { color: var(--ink); }
+.row.batch .mid .a, .row.batch .mid .b { white-space: normal; overflow: visible; }

@@ -31,6 +31,9 @@ o rendimento medido do combustível e avaliações de um toque, além da fiscali
 
 ## Privacidade
 
+- Documentos de LGPD em `docs/lgpd/`: registro das operações, avaliação de legítimo interesse (rede de postos) e plano de incidentes. Base da rede: legítimo interesse com opção de sair.
+- Importações (planilha, IA, Claude) ficam marcadas com lote e origem (`import_batch`, `import_source`) e podem ser desfeitas inteiras em Trazer histórico. Apps conectados só inserem com lote e sem posto da rede.
+
 - Casa, trabalho e a localização atual nunca entram na rede.
 - Exclusão de conta pelo Perfil, que apaga tudo em cascata, inclusive os arquivos de OS.
 - Política e termos ficam dentro do app, em `#/privacidade`.

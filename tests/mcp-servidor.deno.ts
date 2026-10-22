@@ -61,6 +61,7 @@ ok(conf.body.result.structuredContent.entram.abastecimentos === 1 && conf.body.r
 const imp = await call('tools/call', { name: 'importar_historico', arguments: args });
 ok(db.fuel_logs.length === 2 && db.services.length === 1 && db.service_items.length === 2 && db.service_items[1].plan_item_key === 'filtro_oleo', 'importar grava abastecimento, manutenção e itens (categoria deduzida)');
 ok(db.fuel_logs[1].vehicle_id === 'c1' && /^[0-9a-f-]{36}$/.test(db.fuel_logs[1].id) && db.fuel_logs[1].updated_at, 'linhas com id, carro e updated_at');
+ok(db.fuel_logs[1].import_source === 'claude' && /^[0-9a-f-]{36}$/.test(db.fuel_logs[1].import_batch) && db.services[0].import_batch === db.fuel_logs[1].import_batch && !db.fuel_logs[1].station_id, 'importação pelo Claude marcada com lote e origem, sem posto da rede');
 const again = await call('tools/call', { name: 'importar_historico', arguments: args });
 ok(/Nada novo/.test(again.body.result.content[0].text) && db.fuel_logs.length === 2, 'repetir não duplica');
 const hist = await call('tools/call', { name: 'ver_historico', arguments: { carro_id: 'Creta' } });

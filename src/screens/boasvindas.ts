@@ -37,7 +37,7 @@ export function showWelcome(opts: { legacyCount: number | null; onClose: () => v
     '</ul>' +
     (opts.legacyCount ? '<p class="legacy-note">Encontramos ' + opts.legacyCount + ' abastecimentos do app anterior neste celular. Depois de entrar, toque em “Trazer meus dados” no Início.</p>' : '') +
     '<div class="consent"><label><input type="checkbox" id="w-consent" checked>Contribuir com a rede, sem meu nome</label>' +
-    '<span>Publicamos só médias por posto, com volume mínimo. Nunca quem, nunca o horário, nunca casa ou trabalho. Dá para desligar no Perfil.</span>' +
+    '<span>Seus abastecimentos com posto entram só em médias por posto, com volume mínimo: nunca quem, nunca o horário, nunca casa ou trabalho. Desmarque aqui ou desligue depois no Perfil. Para maiores de 18 anos.</span>' +
     '<a href="#/privacidade" id="w-privacy">Ler a política de privacidade</a></div>' +
     '<div id="w-login"></div>' +
     '<button type="button" class="text-btn" id="w-skip">Usar sem conta por enquanto</button>' +

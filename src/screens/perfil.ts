@@ -172,7 +172,16 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
 
   async function download() {
     const data = await exportBackup();
-    const blob = new Blob([JSON.stringify({ ...data, places: S.places, ratings: S.ratings }, null, 2)], { type: 'application/json' });
+    // o que só existe no servidor também vai junto: preços informados e o lembrete deste aparelho
+    let servidor: Record<string, unknown> = {};
+    if (await currentSession()) {
+      const [pr, ps] = await Promise.all([
+        supabase.from('price_reports').select('station_id, fuel, day, price, created_at'),
+        supabase.from('push_subscriptions').select('endpoint, created_at'),
+      ]);
+      servidor = { precos_informados: pr.data ?? [], lembretes: ps.data ?? [] };
+    }
+    const blob = new Blob([JSON.stringify({ ...data, places: S.places, ratings: S.ratings, prefs: S.prefs, ...servidor }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'encheai-meus-dados-' + todayISO() + '.json';

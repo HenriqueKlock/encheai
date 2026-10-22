@@ -39,7 +39,12 @@ export interface FuelLog extends SyncFields {
   note: string | null;
   /** CNPJ do posto (cadastro da ANP), quando escolhido na aba Postos. */
   station_id?: string | null;
+  /** Lote e origem de uma importação (para desfazer a importação inteira). */
+  import_batch?: string | null;
+  import_source?: ImportSource | null;
 }
+
+export type ImportSource = 'claude' | 'ia' | 'planilha';
 
 export interface Service extends SyncFields {
   vehicle_id: string;
@@ -51,6 +56,8 @@ export interface Service extends SyncFields {
   note: string | null;
   /** Caminho do PDF/foto da OS no Storage (`<user_id>/<service_id>.<ext>`). */
   attachment_path?: string | null;
+  import_batch?: string | null;
+  import_source?: ImportSource | null;
 }
 
 /** Arquivo de OS guardado no aparelho, aguardando envio para o Storage depois de salvo como anexo de uma manutenção. */

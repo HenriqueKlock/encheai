@@ -1,12 +1,13 @@
 // Trazer histórico: planilha simples (sem IA), resposta da IA da pessoa (prompt de referência) ou o conector
 // do Claude. Tudo passa pela mesma conferência (duplicados, km fora de ordem, preço estranho) e nada é gravado
 // antes de a pessoa ver a prévia.
-import { db, setMeta, stamp, uuid, type FuelLog, type Service, type ServiceItem } from '../db';
+import { db, setMeta, softDelete, stamp, uuid, type FuelLog, type ImportSource, type Service, type ServiceItem } from '../db';
+import { importBatches, SOURCE_LABEL } from '../lotes';
 import { importBackup } from '../backup';
 import { SUPABASE_URL } from '../config';
 import { aiPrompt, extractJson, parseImport, planImport, CATEGORIAS, type Parsed, type Plan } from '../importacao';
 import { autoMap, detect, FIELDS, missing, readSpreadsheet, tableToParsed, TEMPLATES, type ColumnMap, type Kind, type Table } from '../planilha';
-import { S, activeVehicles, current } from '../store';
+import { S, activeVehicles, current, subscribe } from '../store';
 import { currentSession } from '../sync';
 import { $, brl, esc, fmt, km, pl, toast } from '../ui';
 import { currentRoute, go, onShow } from '../router';
@@ -60,6 +61,7 @@ export function initImportar() {
           opt('ia', SPARK, 'Com a sua IA', 'PDFs e fotos de notas de manutenção, anotações e planilhas bagunçadas. Funciona com Claude, ChatGPT ou Gemini: você copia as instruções, a IA organiza e você cola a resposta aqui.') +
           (MCP_READY ? opt('claude', PLUG, 'Conectar o Claude', 'Para quem usa o Claude: ele lê os seus arquivos e registra direto na sua conta, sempre mostrando antes o que vai entrar.') : '') +
           '</div>' +
+          batchesCard() +
           '<div class="card"><span class="b15">Modelos de planilha</span><span class="hint">Preencha no Excel ou no Google Planilhas e importe aqui.</span>' +
           '<div class="btn-row"><button type="button" class="btn sm" data-tpl="abastecimentos">Abastecimentos</button><button type="button" class="btn sm" data-tpl="manutencoes">Manutenções</button></div></div>' +
           '<p class="foot-note">Também aceita o backup do Enche Aí (.json). Nada é gravado antes de você conferir; registros que já existem no ' + esc(c.name) + ' ficam de fora.</p>'
@@ -140,6 +142,23 @@ export function initImportar() {
     }
   }
 
+  /** Importações deste carro que ainda têm registros: dá para desfazer cada uma inteira. */
+  let undoArmed: string | null = null;
+  function batchesCard() {
+    const c = car()!;
+    const bs = importBatches(S.logs, S.services, c.id).slice(0, 6);
+    if (!bs.length) return '';
+    return (
+      '<div class="card"><span class="b15">Importações no ' + esc(c.name) + '</span><span class="hint">Se alguma veio errada, desfaça inteira: os registros dela saem do histórico.</span>' +
+      '<div class="list-card flat">' + bs.map((b) =>
+        '<div class="row batch"><span class="mid"><span class="a">' + SOURCE_LABEL[b.source] + ' · ' + dmy(b.at.slice(0, 10)) + '</span><span class="b">' +
+        [b.fills ? pl(b.fills, 'abastecimento', 'abastecimentos') : '', b.services ? pl(b.services, 'manutenção', 'manutenções') : ''].filter(Boolean).join(', ') +
+        (b.first ? ' · de ' + dmy(b.first) + ' a ' + dmy(b.last) : '') + '</span></span>' +
+        '<button type="button" class="btn sm' + (undoArmed === b.id ? ' danger-solid' : ' danger') + '" data-undo="' + b.id + '">' + (undoArmed === b.id ? 'Confirmar' : 'Desfazer') + '</button></div>').join('') +
+      '</div></div>'
+    );
+  }
+
   const opt = (k: string, icon: string, a: string, b: string) =>
     '<button type="button" class="row nav wrap" data-imp="' + k + '"><span class="ic gray">' + icon + '</span><span class="mid"><span class="a">' + a + '</span><span class="b">' + b + '</span></span><span class="chev">' + ICON.chev + '</span></button>';
   const backBtn = () => '<button type="button" class="link-btn muted" data-imp="menu">' + '← Outras formas de importar</button>';
@@ -158,18 +177,21 @@ export function initImportar() {
     window.scrollTo({ top: 0 });
   }
 
-  async function apply(plan: Plan) {
+  async function apply(plan: Plan, origem: string) {
     const c = car()!;
+    const import_batch = uuid();
+    const import_source: ImportSource = /planilha/i.test(origem) ? 'planilha' : 'ia';
     await db.transaction('rw', db.fuel_logs, db.services, db.service_items, async () => {
       for (const f of plan.fills) {
         await db.fuel_logs.put(stamp<FuelLog>({
           id: uuid(), vehicle_id: c.id, date: f.date, odometer_km: f.odometer_km, liters: f.liters, total_brl: f.total_brl,
           price_per_l: f.price_per_l, fuel: f.fuel, full_tank: f.full_tank, range_left_km: null, station: f.station, station_id: null, note: f.note,
+          import_batch, import_source,
         }));
       }
       for (const s of plan.services) {
         const sid = uuid();
-        await db.services.put(stamp<Service>({ id: sid, vehicle_id: c.id, date: s.date, odometer_km: s.odometer_km, shop: s.shop, os_number: s.os_number, type: s.type, note: s.note, attachment_path: null }));
+        await db.services.put(stamp<Service>({ id: sid, vehicle_id: c.id, date: s.date, odometer_km: s.odometer_km, shop: s.shop, os_number: s.os_number, type: s.type, note: s.note, attachment_path: null, import_batch, import_source }));
         for (const [position, it] of s.items.entries()) {
           await db.service_items.put(stamp<ServiceItem>({ id: uuid(), service_id: sid, description: it.description, plan_item_key: it.plan_item_key, parts_brl: it.parts_brl, labor_brl: it.labor_brl, next_due_km: null, next_due_date: null, position }));
         }
@@ -267,6 +289,22 @@ export function initImportar() {
       step = { ...step, kind: k, map: autoMap(step.tables[step.sheet].rows[step.headerRow] ?? [], k) };
       return render();
     }
+    const u = el.closest<HTMLElement>('[data-undo]')?.dataset.undo;
+    if (u) {
+      if (undoArmed !== u) { undoArmed = u; return render(); }
+      undoArmed = null;
+      const fills = S.logs.filter((f) => f.import_batch === u && !f.deleted_at);
+      const svcs = S.services.filter((s) => s.import_batch === u && !s.deleted_at);
+      await db.transaction('rw', db.fuel_logs, db.services, db.service_items, async () => {
+        for (const f of fills) await softDelete(db.fuel_logs, f.id);
+        for (const s of svcs) {
+          await softDelete(db.services, s.id);
+          for (const it of S.items.filter((i) => i.service_id === s.id && !i.deleted_at)) await softDelete(db.service_items, it.id);
+        }
+      });
+      toast('Importação desfeita: ' + [fills.length ? pl(fills.length, 'abastecimento', 'abastecimentos') : '', svcs.length ? pl(svcs.length, 'manutenção', 'manutenções') : ''].filter(Boolean).join(' e ') + ' saíram do histórico.');
+      return render();
+    }
     const a = el.closest<HTMLElement>('[data-imp]')?.dataset.imp;
     if (!a) return;
     if (a === 'planilha' || a === 'file') return fileInput.click();
@@ -291,7 +329,7 @@ export function initImportar() {
     if (a === 'go' && step.s === 'previa') {
       (el.closest('button') as HTMLButtonElement).disabled = true;
       try {
-        await apply(step.plan);
+        await apply(step.plan, step.origem);
       } catch (err) {
         console.error(err);
         toast('Não consegui gravar: ' + (err as Error).message);
@@ -305,6 +343,9 @@ export function initImportar() {
     step.map = { ...step.map, [el.dataset.col]: el.value === '' ? null : Number(el.value) };
     render();
   });
+
+  // a lista de importações acompanha o histórico (desfazer, sincronização)
+  subscribe(() => { if (currentRoute().view === 'importar' && step.s === 'menu') render(); });
 
   onShow('importar', () => {
     if (step.s === 'feito') step = { s: 'menu' };

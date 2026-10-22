@@ -107,21 +107,23 @@ function summary(car: Car, p: Plan, done: boolean) {
   if (p.dupFills || p.dupServices) lines.push('- Já existiam e ficaram de fora: ' + p.dupFills + ' abastecimento(s), ' + p.dupServices + ' manutenção(ões)');
   if (p.warnings.length) lines.push('', 'Avisos:', ...p.warnings.slice(0, 30).map((w) => '- ' + w), ...(p.warnings.length > 30 ? ['- … e mais ' + (p.warnings.length - 30)] : []));
   if (!done && (p.fills.length || p.services.length)) lines.push('', 'Mostre este resumo à pessoa e só chame importar_historico depois que ela confirmar.');
-  if (done) lines.push('', 'Os registros aparecem no app na próxima sincronização (ao abrir o app).');
+  if (done) lines.push('', 'Os registros aparecem no app na próxima sincronização (ao abrir o app). Se algo veio errado, a pessoa desfaz esta importação inteira no app, em Trazer histórico.');
   return lines.join('\n');
 }
 
 async function write(ctx: Ctx, car: Car, p: Plan) {
   const now = new Date().toISOString();
+  // um lote por gravação: no app, "Trazer histórico" lista o lote e desfaz a importação inteira
+  const lote = { import_batch: crypto.randomUUID(), import_source: 'claude' };
   const fills = p.fills.map((f) => ({
     id: crypto.randomUUID(), vehicle_id: car.id, date: f.date, odometer_km: f.odometer_km, liters: f.liters, total_brl: f.total_brl,
-    price_per_l: f.price_per_l, fuel: f.fuel, full_tank: f.full_tank, station: f.station, note: f.note, updated_at: now,
+    price_per_l: f.price_per_l, fuel: f.fuel, full_tank: f.full_tank, station: f.station, note: f.note, updated_at: now, ...lote,
   }));
   for (let i = 0; i < fills.length; i += 500) await rest(ctx, 'fuel_logs', { method: 'POST', body: JSON.stringify(fills.slice(i, i + 500)), headers: { Prefer: 'return=minimal' } });
   const svcs: Record<string, unknown>[] = [], items: Record<string, unknown>[] = [];
   for (const s of p.services) {
     const id = crypto.randomUUID();
-    svcs.push({ id, vehicle_id: car.id, date: s.date, odometer_km: s.odometer_km, shop: s.shop, os_number: s.os_number, type: s.type, note: s.note, updated_at: now });
+    svcs.push({ id, vehicle_id: car.id, date: s.date, odometer_km: s.odometer_km, shop: s.shop, os_number: s.os_number, type: s.type, note: s.note, updated_at: now, ...lote });
     s.items.forEach((it, position) => items.push({ id: crypto.randomUUID(), service_id: id, description: it.description, plan_item_key: it.plan_item_key, parts_brl: it.parts_brl, labor_brl: it.labor_brl, position, updated_at: now }));
   }
   for (let i = 0; i < svcs.length; i += 300) await rest(ctx, 'services', { method: 'POST', body: JSON.stringify(svcs.slice(i, i + 300)), headers: { Prefer: 'return=minimal' } });
