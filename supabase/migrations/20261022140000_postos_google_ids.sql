@@ -16,3 +16,6 @@ select cron.schedule('postos-ligar', '17 6 * * *', $$select net.http_post(
 
 -- Nota da comparação (para um lugar do Google ficar com um posto só: o mais parecido).
 alter table public.station_places add column score real;
+
+-- O app lê a ligação posto → place_id (com ou sem login). Só leitura: escrita fica só com a chave de serviço.
+grant select on public.station_places to anon, authenticated;
