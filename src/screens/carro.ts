@@ -229,7 +229,7 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
     const r = el.closest<HTMLElement>('[data-fill],[data-svc]');
     if (!r) return;
     if (r.dataset.fill) fill.open(r.dataset.fill);
-    else maint.openService(r.dataset.svc!);
+    else maint.openService(r.dataset.svc!, { vehicle: current(), logs: carLogs(), services: S.services, items: S.items, pending: S.files });
   });
 
   /* ---------- indicadores ---------- */

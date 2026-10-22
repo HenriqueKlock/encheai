@@ -587,5 +587,7 @@ export function initMaintenance(c: MaintCtx) {
     toast(editing ? 'Manutenção atualizada' : 'Manutenção salva');
   });
 
-  return { render, openService: (id: string) => openService(id) };
+  // quem abre uma manutenção de fora da aba Manutenção (pelo Histórico) passa os dados atuais:
+  // sem isso, a aba que nunca foi aberta não sabe qual é o carro e pedia para cadastrar um
+  return { render, openService: (id: string, d?: MaintData) => { if (d) data = d; openService(id); } };
 }
