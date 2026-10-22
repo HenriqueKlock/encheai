@@ -57,7 +57,7 @@ async function withinQuota(req: Request, fn: string, max: number): Promise<boole
   }
 }
 
-const LIMITS: Record<string, number> = { nearby: 40, posto: 20, address: 30, photo: 30, autocomplete: 150, details: 30 };
+const LIMITS: Record<string, number> = { nearby: 80, posto: 30, address: 30, photo: 30, autocomplete: 150, details: 30 };
 
 const inBrazil = (lat: number, lon: number) => lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34;
 

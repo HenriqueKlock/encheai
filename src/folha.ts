@@ -1,87 +1,138 @@
-// Visual novo, aba Postos: a lista é uma folha sobre o mapa em tela cheia. Arrastar pela alça leva a folha
-// para cima (lista inteira), para o meio ou para baixo (mapa quase inteiro). Tocar na alça alterna meio e baixo.
+// Visual novo, aba Postos: a lista é uma folha sobre o mapa em tela cheia, com três posições
+// (aberta: lista inteira; meio; baixa: mapa quase inteiro).
+// - Arrastar em qualquer parte da folha a move junto com o dedo. Na lista, enquanto a folha não está aberta,
+//   arrastar para cima sobe a folha (em vez de rolar a lista); com a folha aberta e a lista no topo,
+//   puxar para baixo desce a folha e mostra o mapa.
+// - Tocar na alça alterna meio e baixa. No computador, arrasta pela alça com o mouse.
 import { isNovo } from './visual';
 
 type Pos = 'aberta' | 'meio' | 'baixa';
+const ORDER: Pos[] = ['aberta', 'meio', 'baixa'];
 
-export function initFolha(sheet: HTMLElement, grab: HTMLElement, body: HTMLElement, onMove?: () => void) {
+export function initFolha(sheet: HTMLElement, grab: HTMLElement, body: HTMLElement, onSettle?: (p: Pos) => void) {
   let pos: Pos = 'meio';
   const safeTop = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0;
-  const tabbarH = () => document.getElementById('tabbar')?.getBoundingClientRect().height ?? 80;
-  /** Posição do topo da folha (px a partir do topo da tela) em cada estado. */
+  const tabbarH = () => document.getElementById('tabbar')?.getBoundingClientRect().height || 80;
+  /** Topo da folha (px a partir do topo da tela) em cada posição. */
   function topOf(p: Pos) {
     const h = window.innerHeight;
     if (p === 'aberta') return 66 + safeTop();
     if (p === 'baixa') return h - tabbarH() - 100; // alça e filtros à vista, acima do botão Abastecer
     return Math.round(h * 0.5);
   }
-  function apply(p: Pos) {
+  const nearest = (top: number) => ORDER.reduce((a, b) => (Math.abs(topOf(b) - top) < Math.abs(topOf(a) - top) ? b : a));
+  let settleTimer: number | undefined;
+  function apply(p: Pos, notify = true) {
+    const changed = p !== pos;
     pos = p;
-    if (p !== 'aberta') body.scrollTop = 0;
     sheet.style.setProperty('--sheet-top', topOf(p) + 'px');
     sheet.dataset.pos = p;
+    if (p !== 'aberta') body.scrollTop = 0;
     grab.setAttribute('aria-label', p === 'baixa' ? 'Mostrar a lista de postos' : 'Esconder a lista e ver o mapa');
-    setTimeout(() => onMove?.(), 300);
+    clearTimeout(settleTimer);
+    // espera a animação acabar para o mapa reenquadrar na parte que ficou visível
+    if (notify && changed) settleTimer = window.setTimeout(() => onSettle?.(p), 300);
+  }
+  const curTop = () => sheet.getBoundingClientRect().top;
+  /** Solta a folha: gesto rápido vai para a próxima posição na direção dele; devagar, para a mais perto. */
+  function release(vel: number) {
+    const top = curTop();
+    if (Math.abs(vel) > 0.45) {
+      const next = vel > 0 ? ORDER.find((p) => topOf(p) > top + 8) ?? 'baixa' : [...ORDER].reverse().find((p) => topOf(p) < top - 8) ?? 'aberta';
+      return apply(next);
+    }
+    apply(nearest(top));
   }
 
-  let startY = 0, startTop = 0, lastY = 0, lastT = 0, vel = 0, moved = false, dragging = false;
+  /* ---------- toque (celular) ---------- */
+  type Drag = { y0: number; x0: number; top0: number; lastY: number; lastT: number; vel: number; mode: 'undecided' | 'sheet' | 'native'; inBody: boolean };
+  let d: Drag | null = null;
+  sheet.addEventListener('touchstart', (e) => {
+    if (!isNovo() || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    d = { y0: t.clientY, x0: t.clientX, top0: curTop(), lastY: t.clientY, lastT: performance.now(), vel: 0, mode: 'undecided', inBody: body.contains(e.target as Node) };
+  }, { passive: true });
+  sheet.addEventListener('touchmove', (e) => {
+    if (!d) return;
+    const t = e.touches[0];
+    const dy = t.clientY - d.y0, dx = t.clientX - d.x0;
+    if (d.mode === 'undecided') {
+      if (Math.abs(dy) < 5 && Math.abs(dx) < 5) return;
+      if (Math.abs(dx) > Math.abs(dy)) d.mode = 'native'; // chips rolando de lado
+      else if (!d.inBody || pos !== 'aberta') d.mode = 'sheet';
+      else d.mode = dy > 0 && body.scrollTop <= 0 ? 'sheet' : 'native';
+      if (d.mode === 'sheet') {
+        sheet.classList.add('dragging');
+        d.y0 = d.lastY = t.clientY; // conta a partir daqui: a folha não dá salto
+        d.top0 = curTop();
+      }
+    }
+    if (d.mode !== 'sheet') return;
+    e.preventDefault();
+    const now = performance.now();
+    d.vel = 0.7 * ((t.clientY - d.lastY) / Math.max(1, now - d.lastT)) + 0.3 * d.vel;
+    d.lastY = t.clientY;
+    d.lastT = now;
+    sheet.style.setProperty('--sheet-top', Math.min(topOf('baixa'), Math.max(topOf('aberta'), d.top0 + (t.clientY - d.y0))) + 'px');
+  }, { passive: false });
+  const touchEnd = () => {
+    if (!d) return;
+    const was = d;
+    d = null;
+    if (was.mode !== 'sheet') return;
+    sheet.classList.remove('dragging');
+    release(performance.now() - was.lastT > 120 ? 0 : was.vel);
+  };
+  sheet.addEventListener('touchend', touchEnd);
+  sheet.addEventListener('touchcancel', touchEnd);
+
+  /* ---------- alça com o mouse ---------- */
+  let m: { y0: number; top0: number; lastY: number; lastT: number; vel: number; moved: boolean } | null = null;
+  let suppressClick = false;
   grab.addEventListener('pointerdown', (e) => {
-    if (!isNovo()) return;
-    dragging = true;
-    moved = false;
-    startY = lastY = e.clientY;
-    lastT = performance.now();
-    vel = 0;
-    startTop = sheet.getBoundingClientRect().top;
+    if (!isNovo() || e.pointerType === 'touch') return;
+    m = { y0: e.clientY, top0: curTop(), lastY: e.clientY, lastT: performance.now(), vel: 0, moved: false };
     sheet.classList.add('dragging');
     grab.setPointerCapture(e.pointerId);
   });
   grab.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    const dy = e.clientY - startY;
-    if (Math.abs(dy) > 6) moved = true;
+    if (!m) return;
+    const dy = e.clientY - m.y0;
+    if (Math.abs(dy) > 5) m.moved = true;
     const now = performance.now();
-    vel = (e.clientY - lastY) / Math.max(1, now - lastT); // px/ms, positivo = descendo
-    lastY = e.clientY;
-    lastT = now;
-    const top = Math.min(topOf('baixa'), Math.max(topOf('aberta'), startTop + dy));
-    sheet.style.setProperty('--sheet-top', top + 'px');
+    m.vel = (e.clientY - m.lastY) / Math.max(1, now - m.lastT);
+    m.lastY = e.clientY;
+    m.lastT = now;
+    sheet.style.setProperty('--sheet-top', Math.min(topOf('baixa'), Math.max(topOf('aberta'), m.top0 + dy)) + 'px');
   });
-  const end = () => {
-    if (!dragging) return;
-    dragging = false;
+  const pointerEnd = () => {
+    if (!m) return;
+    const was = m;
+    m = null;
     sheet.classList.remove('dragging');
-    if (!moved) return apply(pos === 'baixa' ? 'meio' : pos === 'aberta' ? 'meio' : 'baixa');
-    const top = sheet.getBoundingClientRect().top;
-    // um gesto rápido vai para o próximo estado na direção dele; devagar, para o mais perto
-    const order: Pos[] = ['aberta', 'meio', 'baixa'];
-    if (Math.abs(vel) > 0.5) {
-      const cur = order.reduce((a, b) => (Math.abs(topOf(b) - top) < Math.abs(topOf(a) - top) ? b : a));
-      const i = order.indexOf(cur);
-      const goingDown = vel > 0;
-      const next = goingDown ? (topOf(cur) >= top ? cur : order[Math.min(2, i + 1)]) : (topOf(cur) <= top ? cur : order[Math.max(0, i - 1)]);
-      return apply(next);
+    if (was.moved) {
+      suppressClick = true;
+      release(performance.now() - was.lastT > 120 ? 0 : was.vel);
     }
-    apply(order.reduce((a, b) => (Math.abs(topOf(b) - top) < Math.abs(topOf(a) - top) ? b : a)));
   };
-  grab.addEventListener('pointerup', end);
-  grab.addEventListener('pointercancel', end);
+  grab.addEventListener('pointerup', pointerEnd);
+  grab.addEventListener('pointercancel', pointerEnd);
+  // toque simples (ou Enter) na alça: meio ↔ baixa; da aberta volta ao meio
+  grab.addEventListener('click', () => {
+    if (suppressClick) { suppressClick = false; return; }
+    if (isNovo()) apply(pos === 'meio' ? 'baixa' : 'meio');
+  });
   grab.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowUp') { e.preventDefault(); apply(pos === 'baixa' ? 'meio' : 'aberta'); }
     if (e.key === 'ArrowDown') { e.preventDefault(); apply(pos === 'aberta' ? 'meio' : 'baixa'); }
   });
+  window.addEventListener('resize', () => apply(pos, false));
 
-  // rolar a lista com a folha no meio abre a folha inteira (como nos apps de mapa)
-  body.addEventListener('scroll', () => {
-    if (isNovo() && pos !== 'aberta' && body.scrollTop > 24) apply('aberta');
-  }, { passive: true });
-  window.addEventListener('resize', () => apply(pos));
-
-  apply('meio');
+  apply('meio', false);
   return {
     /** Quanto da altura da tela a folha cobre agora (para o mapa enquadrar os postos na parte visível). */
-    cover: () => (isNovo() ? Math.max(0, window.innerHeight - sheet.getBoundingClientRect().top) : 0),
-    set: apply,
+    cover: () => (isNovo() ? Math.max(0, window.innerHeight - curTop()) : 0),
+    set: (p: Pos) => apply(p),
     get: () => pos,
   };
 }

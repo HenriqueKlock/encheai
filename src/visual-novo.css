@@ -203,6 +203,21 @@
 .how2 summary::-webkit-details-marker { display: none; }
 .how2 .foot-note { padding: 0 4px 8px; }
 
+/* bandeira do posto */
+.bd { display: inline-grid; place-items: center; flex: none; border-radius: 50%; font-family: var(--font); font-weight: 800; letter-spacing: -.02em; line-height: 1; vertical-align: -5px; margin-right: 7px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
+.bd.branca { background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1.5px var(--field); }
+.bd.branca svg { width: 58%; height: 58%; }
+.ps2-name h2 .bd { vertical-align: 2px; margin-right: 9px; }
+.ps2-name h2 .bd.branca { background: transparent; color: var(--on-mata-2); box-shadow: inset 0 0 0 1.5px var(--on-mata-2); }
+.st2 .nm .t2 { margin-right: 6px; }
+
+/* busca pelo nome */
+.v2 .fchip.lupa { width: 40px; padding: 0; justify-content: center; }
+.q2 { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 4px 0 14px; margin: 2px 0 4px; border-radius: 23px; background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1.5px var(--link); }
+.q2 input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; font-size: 16px; color: var(--ink); }
+.q2 input::-webkit-search-cancel-button { display: none; }
+.q2 button { width: 38px; height: 38px; border: 0; border-radius: 19px; background: none; color: var(--muted); display: grid; place-items: center; }
+
 /* pinos do mapa */
 .v2 .pin span { background: #FFFFFF; color: #18201C; border: 0; padding: 5px 10px; box-shadow: 0 2px 6px rgba(24, 32, 28, .18); }
 .v2 .pin.best em, .v2 .pin.cheap em { padding: 2px 7px; transform: translate(-50%, -4px); font: 800 10px var(--font); letter-spacing: .06em; text-transform: uppercase; }
@@ -278,6 +293,15 @@
 .why2-chips span { height: 30px; padding: 0 12px; border-radius: 15px; display: inline-flex; align-items: center; font-size: 13px; font-weight: 600; background: var(--ok-bg); color: var(--svc-ink); }
 .why2-chips span.warn { background: var(--warn-bg); color: var(--warn-ink); }
 .v2 #posto-body .pr-open { align-self: flex-start; font-weight: 700; color: var(--link); }
+.pl2 { position: relative; }
+.pl2-add { align-self: flex-start; margin-top: 8px; height: 28px; padding: 0 11px 0 8px; border: 0; border-radius: 13px; background: #C3F25C; color: #0E3B2E; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 3px; }
+.pl2-add:active { transform: scale(.96); }
+.pl2.edit { box-shadow: inset 0 0 0 2px #C3F25C; }
+.pl2.edit input.v { width: 100%; min-width: 0; padding: 0; border: 0; border-bottom: 2px solid #C3F25C; border-radius: 0; outline: 0; background: transparent; color: var(--on-mata); }
+.pl2.edit input.v::placeholder { color: rgba(242, 241, 234, .35); }
+.pl2-acts { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 6px; }
+.pl2-acts button { height: 30px; min-width: 30px; border: 0; border-radius: 15px; background: transparent; color: var(--on-mata); display: grid; place-items: center; }
+.pl2-acts .go { padding: 0 14px; background: #C3F25C; color: #0E3B2E; font-size: 13px; font-weight: 700; }
 
 /* ---------- ficha do posto ---------- */
 .v2 .price-grid { background: var(--mata); border: 0; }

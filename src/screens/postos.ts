@@ -19,6 +19,7 @@ import { addressSearch } from './busca-endereco';
 import { ICON } from '../icons';
 import { isNovo } from '../visual';
 import { initFolha } from '../folha';
+import { brandBadge } from '../bandeira';
 
 type BaseKind = 'agora' | 'casa' | 'trabalho' | 'rota' | 'busca';
 const REC_LABEL: Record<BaseKind, string> = {
@@ -139,8 +140,10 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
 
   async function fetchGoogle(center: LatLon, radiusKm: number) {
     if (googleOn === false || gBlocked || !file) return;
-    const snap = { lat: Math.round(center.lat / 0.02) * 0.02, lon: Math.round(center.lon / 0.02) * 0.02 };
-    const r = radiusKm <= 4 ? 4 : radiusKm <= 7 ? 7 : 10;
+    const small = radiusKm <= 1.5;
+    const step = small ? 0.01 : 0.02;
+    const snap = { lat: Math.round(center.lat / step) * step, lon: Math.round(center.lon / step) * step };
+    const r = small ? 1.5 : radiusKm <= 4 ? 4 : radiusKm <= 7 ? 7 : 10;
     const key = 'nearby:' + snap.lat.toFixed(2) + ',' + snap.lon.toFixed(2) + ',' + r;
     if (googleDone.has(key)) return;
     googleDone.add(key);
@@ -149,7 +152,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     else {
       if (navigator.onLine === false || !(await currentSession())) return;
       try {
-        const res = await googlePlaces<GoogleStation>({ mode: 'nearby', lat: snap.lat, lon: snap.lon, radius_m: Math.round((r * 1000) / 1.3) });
+        const res = await googlePlaces<GoogleStation>({ mode: 'nearby', lat: snap.lat, lon: snap.lon, radius_m: small ? 1600 : Math.round((r * 1000) / 1.3) });
         googleOn = res.configured;
         if (!res.configured) return;
         places = res.places;
@@ -487,7 +490,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         ? '<button type="button" class="fchip dist" data-f="desvio" aria-label="Desvio máximo, toque para mudar">' + (dm_ < 1000 ? dm_ + ' m' : dm_ / 1000 + ' km') + ' de desvio</button>'
         : '<button type="button" class="fchip dist" data-f="raio" aria-label="Distância, toque para mudar">' + radius + ' km</button>';
     }
-    $('p-filters').innerHTML = fuelChips + chip('ok', filters.ok, 'Só confiáveis') + dist + chip('recent', filters.recent, 'Preço até 7 dias') + chip('bath', filters.bath, 'Banheiro bom');
+    const lupa = isNovo() ? '<button type="button" class="fchip lupa" data-f="busca" aria-pressed="' + searching + '" aria-label="Procurar posto pelo nome ou rua">' + LUPA + '</button>' : '';
+    $('p-filters').innerHTML = lupa + fuelChips + chip('ok', filters.ok, 'Só confiáveis') + dist + chip('recent', filters.recent, 'Preço até 7 dias') + chip('bath', filters.bath, 'Banheiro bom');
   }
 
   function render() {
@@ -498,7 +502,13 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const right = 'base' in rs && rs.base.kind === 'rota'
       ? '<span class="mini-seg">' + DETOURS.map((d) => '<button type="button" data-detour="' + d + '" aria-pressed="' + (rota()?.detour_m === d) + '">' + (d < 1000 ? d + ' m' : d / 1000 + ' km') + '</button>').join('') + '</span>'
       : '<span class="mini-seg">' + RADII.map((r) => '<button type="button" data-radius="' + r + '" aria-pressed="' + (radius === r) + '">' + r + ' km</button>').join('') + '</span>';
-    $('p-where').innerHTML = isNovo()
+    if (isNovo() && searching) {
+      // o campo não é redesenhado enquanto a pessoa digita
+      if (!document.getElementById('p-q')) {
+        $('p-where').innerHTML = '<div class="q2">' + LUPA + '<input id="p-q" type="search" placeholder="Nome do posto, rua ou bairro" autocomplete="off" enterkeyhint="search" aria-label="Procurar posto pelo nome, rua ou bairro"><button type="button" data-q-close aria-label="Fechar a busca">' + XS + '</button></div>';
+        ($('p-q') as HTMLInputElement).value = query;
+      }
+    } else $('p-where').innerHTML = isNovo()
       ? '<button type="button" class="w w2" data-local>' + PIN + '<span>' + esc(rs.where) + '</span><em>Trocar</em></button>'
       : '<span class="w">' + PIN + '<span>' + esc(rs.where) + '</span></span>' + right;
     const body = $('p-body');
@@ -529,8 +539,11 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const sorted = sortRows(rows);
     const limit = showAll ? sorted.length : 20;
     if (isNovo()) {
-      body.innerHTML = bodyNovo(rs.base, rows, rec, sorted, limit);
+      const busca = searching && norm(query).length >= 2;
+      body.innerHTML = busca ? searchBody(rs, rec) : bodyNovo(rs.base, rows, rec, sorted, limit);
       drawMap(rs, rows, rec);
+      const shownIds = [...(rec.best ? [rec.best.s.c] : []), ...(rec.cheapest ? [rec.cheapest.s.c] : []), ...sorted.map((r) => r.s.c)].slice(0, Math.min(limit, 20));
+      nameRows(busca ? searchRows(rs).slice(0, 12) : shownIds.map((c) => rows.find((r) => r.s.c === c)).filter((r): r is StationRow => !!r));
       return;
     }
     let html = '';
@@ -583,8 +596,78 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const price = o
       ? '<span class="pr' + (isCheap ? ' cheap' : '') + (o.stale ? ' old' : '') + '"><i class="dot ' + (o.fuel === 'gasolina' ? 'gas' : 'eth') + '"></i>' + fmt(o.price.price, 2) + '</span>'
       : '<span class="pr none">sem preço</span>';
-    return '<button type="button" class="st2' + (isBest ? ' best' : '') + '" data-posto="' + r.s.c + '"><span class="nm">' + tag + '<b>' + esc(nm(r.s)) + '</b></span>' + price +
+    return '<button type="button" class="st2' + (isBest ? ' best' : '') + '" data-posto="' + r.s.c + '"><span class="nm">' + brandBadge(r.s.b, 24) + tag + '<b>' + esc(nm(r.s)) + '</b></span>' + price +
       '<span class="sb">' + sl + '<span>· ' + esc(distTxt(r, b)) + (extra ? ' · ' + esc(extra) : '') + '</span></span></button>';
+  }
+
+  /* ---------- busca pelo nome do posto ---------- */
+  let searching = false;
+  let query = '';
+  const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  /** Postos até 25 km do lugar escolhido cujo nome (Google ou ANP), rua, bairro ou bandeira têm todas as palavras digitadas. */
+  function searchRows(rs: Resolved): StationRow[] {
+    const words = norm(query).split(/\s+/).filter((w) => w.length >= 2);
+    if (!words.length || !('center' in rs)) return [];
+    const at = rs.center;
+    const bb = bboxAround(at, 25);
+    const cands = stations().filter((s) => s.la > bb.s && s.la < bb.n && s.lo > bb.w && s.lo < bb.e && words.every((w) => norm(nm(s) + ' ' + s.n + ' ' + s.e + ' ' + s.br + ' ' + s.m + ' ' + s.b).includes(w)));
+    return stationsFor(cands, { kind: 'ponto', at, radiusKm: 25 }, model(), own(), todayISO(), google, network(), mine()).sort((a, b) => a.distKm - b.distKm).slice(0, 30);
+  }
+  function searchBody(rs: Resolved, rec: Recommendation) {
+    const found = searchRows(rs);
+    const b: Base = 'base' in rs ? rs.base : { kind: 'ponto', at: here?.p ?? { lat: 0, lon: 0 }, radiusKm: 25 };
+    const g = gBlocked || googleOn === false ? '' : '<button type="button" class="list-more" data-act="gsearch">' + (found.length ? 'Não é nenhum desses? Procurar no Google' : 'Procurar “' + esc(query.trim()) + '” no Google') + '</button>';
+    return (found.length
+      ? '<div class="st2-list">' + found.map((r) => row2(r, b, rec, false, false)).join('') + '</div>'
+      : '<div class="card center"><p class="hint">Nenhum posto com esse nome por perto. O nome na fachada pode ser diferente do cadastro: tente a rua ou o bairro.</p></div>') + g;
+  }
+  /** Procura no Google o que foi digitado e liga os resultados aos postos da ANP (nome e ponto exatos). */
+  async function googleSearch() {
+    const rs = resolve(base);
+    if (!('center' in rs) || !file) return;
+    if (!(await currentSession())) return toast('Entre na conta (Perfil) para procurar no Google.');
+    const at = rs.center;
+    const q = query.trim();
+    const key = 'busca:' + norm(q) + ':' + at.lat.toFixed(2) + ',' + at.lon.toFixed(2);
+    let places = await gGet(key);
+    if (!places) {
+      try {
+        const res = await googlePlaces<GoogleStation>({ mode: 'posto', query: q + ' posto de combustível', lat: at.lat, lon: at.lon });
+        googleOn = res.configured;
+        if (!res.configured) return;
+        places = res.places;
+        await gPut(key, places);
+      } catch (e) {
+        return gError(e);
+      }
+    }
+    const got = places;
+    const near = file.postos.filter((s) => got.some((g) => Math.abs(g.lat - s.la) < 0.02 && Math.abs(g.lon - s.lo) < 0.02));
+    const m = matchGoogle(got, near);
+    addMatches(m);
+    if (!m.size) toast('O Google não achou um posto da lista da ANP com esse nome por perto.');
+    render();
+  }
+
+  /* ---------- nomes do Google na lista ---------- */
+  // Os postos da lista que ainda estão com o nome da ANP ganham o nome do Google: uma busca por perto de cada
+  // grupo sem nome (no máximo 3 por vez; cada área fica guardada por uma semana no aparelho).
+  const nameTried = new Set<string>();
+  let naming = false;
+  async function nameRows(rows: StationRow[]) {
+    if (naming || googleOn === false || gBlocked || !file) return;
+    naming = true;
+    try {
+      for (let i = 0; i < 3; i++) {
+        const miss = rows.find((r) => !gmatch.has(r.s.c) && !nameTried.has(r.s.c));
+        if (!miss) break;
+        const at = { lat: miss.s.la, lon: miss.s.lo };
+        for (const r of rows) if (haversineKm(at, { lat: r.s.la, lon: r.s.lo }) < 1.1) nameTried.add(r.s.c);
+        await fetchGoogle(at, 1.5);
+      }
+    } finally {
+      naming = false;
+    }
   }
 
   function sourcesNote() {
@@ -594,7 +677,11 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return '<p class="foot-note">Preços: o que a rede pagou nos últimos 7 dias, os seus abastecimentos e a pesquisa semanal da ANP' + (w ? ' (mais recente: ' + dm(w[0]) + ' a ' + dm(w[1]) + ')' : '') + '. Sugerido: o menor custo para rodar (preço, combustível, desvio e rendimento medido), pesado pela confiabilidade (fiscalização da ANP nos últimos 5 anos, notas do Google, avaliações da rede e as suas) e pela idade do preço; o menor preço aparece à parte. ' + g + ' Distâncias aproximadas.</p>';
   }
 
-  const folha = initFolha($('p-sheet'), $('p-grab'), $('p-body'));
+  const folha = initFolha($('p-sheet'), $('p-grab'), $('p-body'), () => {
+    if (!lastMap || currentRoute().view !== 'postos') return;
+    mapKey = '';
+    drawMap(lastMap.rs, lastMap.rows, lastMap.rec);
+  });
 
   /* ---------- mapa da aba ---------- */
   let L: typeof import('leaflet') | null = null;
@@ -713,6 +800,13 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     else if (f === 'ok') filters.ok = !filters.ok;
     else if (f === 'recent') filters.recent = !filters.recent;
     else if (f === 'bath') filters.bath = !filters.bath;
+    else if (f === 'busca') {
+      searching = !searching;
+      if (!searching) query = '';
+      render();
+      if (searching) { folha.set('aberta'); setTimeout(() => document.getElementById('p-q')?.focus(), 60); }
+      return;
+    }
     else if (f === 'raio') { radius = RADII[(RADII.indexOf(radius) + 1) % RADII.length]; mapKey = ''; return render(); }
     else if (f === 'desvio') {
       const cur = rota()?.detour_m ?? 1000;
@@ -728,12 +822,20 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const r = el.closest<HTMLElement>('[data-radius]');
     const d = el.closest<HTMLElement>('[data-detour]');
     if (el.closest('[data-local]')) return openLocal();
+    if (el.closest('[data-q-close]')) { searching = false; query = ''; return render(); }
     if (r) { radius = Number(r.dataset.radius); render(); }
     if (d && S.places.rota) await setPlace('rota', { label: 'Casa → Trabalho', lat: null, lon: null, data: { ...S.places.rota.data, detour_m: Number(d.dataset.detour) } });
+  });
+  $('p-where').addEventListener('input', (e) => {
+    const el = e.target as HTMLInputElement;
+    if (el.id !== 'p-q') return;
+    query = el.value;
+    render();
   });
   $('p-body').addEventListener('click', (e) => {
     const el = e.target as HTMLElement;
     const act = el.closest<HTMLElement>('[data-act]')?.dataset.act;
+    if (act === 'gsearch') return void googleSearch();
     const posto = el.closest<HTMLElement>('[data-posto]')?.dataset.posto;
     const cmp = el.closest<HTMLElement>('.cmp-cell[data-base]')?.dataset.base;
     if (act === 'gps') return locate();
@@ -860,13 +962,22 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       const who = (pp: PricePoint) => pp.src === 'rede'
         ? (pp.seen ? 'informado · ' : pl(pp.n ?? 1, 'pessoa', 'pessoas') + ' · ') + ago(pp.date, today)
         : pp.src === 'voce' ? (pp.seen ? 'você viu · ' : 'você pagou · ') + ago(pp.date, today) : 'ANP · ' + dm(pp.date);
-      const plate = (fuel: Fuel, pp: PricePoint | null) =>
-        '<div class="pl2' + (row.best && !row.best.stale && row.best.fuel === fuel ? ' win' : '') + '"><span class="k"><i class="dot ' + (fuel === 'gasolina' ? 'gas' : 'eth') + '"></i>' + FUEL[fuel].toUpperCase() + '</span>' +
-        '<span class="v">' + (pp ? fmt(pp.price, 2) : '–') + '</span><span class="d">' + (pp ? esc(who(pp)) + (ageDays(pp.date, today) > 30 ? ' (antigo)' : '') : 'sem preço recente') + '</span></div>';
+      const plate = (fuel: Fuel, pp: PricePoint | null) => {
+        const k = '<span class="k"><i class="dot ' + (fuel === 'gasolina' ? 'gas' : 'eth') + '"></i>' + FUEL[fuel].toUpperCase() + '</span>';
+        if (reportOpen === s.c && reportFuel === fuel) {
+          // informando o preço da bomba: o próprio cartão vira o campo
+          return '<div class="pl2 edit">' + k + '<label class="sr" for="pr-' + fuel + '">Preço do ' + FUEL[fuel].toLowerCase() + ' na bomba, em reais por litro</label>' +
+            '<input class="v" id="pr-' + fuel + '" inputmode="decimal" autocomplete="off" placeholder="' + (pp ? fmt(pp.price, 2) : '0,00') + '" enterkeyhint="send">' +
+            '<span class="pl2-acts"><button type="button" data-pr="cancel" aria-label="Cancelar">' + XS + '</button><button type="button" class="go" data-pr="send">Enviar</button></span></div>';
+        }
+        return '<div class="pl2' + (row.best && !row.best.stale && row.best.fuel === fuel ? ' win' : '') + '">' + k +
+          '<span class="v">' + (pp ? fmt(pp.price, 2) : '–') + '</span><span class="d">' + (pp ? esc(who(pp)) + (ageDays(pp.date, today) > 30 ? ' (antigo)' : '') : 'sem preço recente') + '</span>' +
+          '<button type="button" class="pl2-add" data-pr="open" data-fuel="' + fuel + '" aria-label="Informar o preço do ' + FUEL[fuel].toLowerCase() + ' na bomba">' + PLUS + 'Informar preço</button></div>';
+      };
       const head =
         '<div class="ps2-head"><div class="ps2-top"><button type="button" class="ps2-back" data-close aria-label="Voltar">' + BACK + '</button>' +
         '<span class="ps2-selo ' + rel.level + '">' + SHIELD_OK + fmt(rel.score, 1) + ' ' + lvlTxt + '</span></div>' +
-        '<div class="ps2-name"><h2>' + esc(nm(s)) + '</h2><span>' + esc([s.e, dist].filter(Boolean).join(' · ')) + (s.pg === 'b' ? ' · local aproximado' : '') + '</span></div>' +
+        '<div class="ps2-name"><h2>' + brandBadge(s.b, 30) + esc(nm(s)) + '</h2><span>' + esc([s.e, dist].filter(Boolean).join(' · ')) + (s.pg === 'b' ? ' · local aproximado' : '') + '</span></div>' +
         '<div class="ps2-plates">' + (car.model.fuels.includes('etanol') ? plate('etanol', row.eth) : '') + (car.model.fuels.includes('gasolina') ? plate('gasolina', row.gas) : '') + '</div></div>';
       // anel do rendimento
       let pctTxt = '–', frac = 0, ringTone = 'ok', yT = 'Rendimento sem medição', yS = 'Cada tanque cheio registrado aqui conta: o app compara com o consumo normal de cada pessoa.';
@@ -907,7 +1018,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         ? '<div class="card"><span class="b15">Você aqui</span>' + (v ? '<span class="hint ' + v.tone + '">' + esc(v.text) + '</span>' : '') +
           (mine.length ? '<span class="hint">' + pl(mine.length, 'abastecimento', 'abastecimentos') + ', o último em ' + dm(mine[0].date) + (u?.kml ? ' · ' + fmt(u.kml, 1) + ' km/l' : '') + '</span>' : '') + linkOffer(s) + '</div>'
         : '';
-      $('posto-body').innerHTML = head + yieldBox + whyBox + reportBlock(s, row) +
+      $('posto-body').innerHTML = head + yieldBox + whyBox +
         (perKm ? '<p class="hint">' + perKm + '</p>' : '') + me +
         '<div class="card"><div class="card-head"><span>Como chegar</span><span class="hint" id="ps-eta"></span></div><div class="ps-map" id="ps-map" role="img" aria-label="Mapa com o posto e o caminho até ele"></div><span class="hint" id="ps-map-note"></span></div>';
       return;
@@ -927,6 +1038,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
 
   /** "Informar preço": quem está no posto conta o preço da bomba, sem precisar abastecer. */
   let reportOpen: string | null = null;
+  /** Visual novo: qual combustível está sendo informado (o cartão dele vira campo). */
+  let reportFuel: Fuel | null = null;
   function reportBlock(s: Station, row: StationRow) {
     const fuels = carInfo().model.fuels;
     if (reportOpen !== s.c) {
@@ -942,6 +1055,11 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       '<div class="btn-row"><button type="button" class="btn sm" data-pr="cancel">Cancelar</button><button type="button" class="btn sm primary" data-pr="send">Enviar</button></div></div>'
     );
   }
+  $('posto-body').addEventListener('keydown', (e) => {
+    const el = e.target as HTMLElement;
+    if (e.key === 'Enter' && el.matches('.pl2.edit input')) { e.preventDefault(); el.closest('.pl2')?.querySelector<HTMLButtonElement>('[data-pr="send"]')?.click(); }
+    if (e.key === 'Escape' && el.matches('.pl2.edit input')) el.closest('.pl2')?.querySelector<HTMLButtonElement>('[data-pr="cancel"]')?.click();
+  });
   $('posto-body').addEventListener('click', async (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-pr]');
     if (!b || !shown) return;
@@ -951,11 +1069,12 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       if (!(await currentSession())) return toast('Entre na conta (Perfil) para informar preços.');
       if (!S.prefs.contribute) return toast('Ligue "Contribuir com a rede" no Perfil para informar preços.');
       reportOpen = st.c;
+      reportFuel = (b.dataset.fuel as Fuel | undefined) ?? null;
       renderPosto(st);
-      setTimeout(() => (document.querySelector<HTMLInputElement>('#posto-body .pr-card input'))?.focus(), 50);
+      setTimeout(() => (document.querySelector<HTMLInputElement>('#posto-body .pr-card input, #posto-body .pl2.edit input'))?.focus(), 50);
       return;
     }
-    if (act === 'cancel') { reportOpen = null; return renderPosto(st); }
+    if (act === 'cancel') { reportOpen = null; reportFuel = null; return renderPosto(st); }
     if (act === 'send') {
       const items: { fuel: Fuel; price: number }[] = [];
       for (const fuel of ['gasolina', 'etanol'] as const) {
@@ -972,6 +1091,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       b.disabled = false;
       if (err) return toast(err);
       reportOpen = null;
+      reportFuel = null;
       invalidateNetwork(st.c);
       toast('Obrigado! O preço aparece para todos em até 5 minutos.');
       renderPosto(st);
@@ -1219,6 +1339,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     }
     const cheapTxt = cheapNote(rec, carInfo().model.kmTank, true);
     if (isNovo()) {
+      nameRows(all.rows.filter((r) => r.s.c === b.s.c));
       // visual novo: o cartão inteiro abre a ficha; embaixo, a economia contra o outro combustível
       const save = rec.bestOther && rec.bestOther.cost - b.cost >= 0.5 ? '<b>R$ ' + Math.round(rec.bestOther.cost - b.cost) + ' a menos</b> que ' + FUEL[rec.bestOther.fuel].toLowerCase() + ' no tanque' : favTxt ? esc(favTxt) : 'Ver a ficha do posto';
       el.innerHTML =
@@ -1290,5 +1411,8 @@ export type PostosApi = ReturnType<typeof initPostos>;
 
 const BACK = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>';
 const SHIELD_OK = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/><path d="M8.8 12.2l2.2 2.2 4.4-4.6" stroke="var(--sh-in, #C3F25C)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const SHIELD14 ='<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/></svg>';
+const LUPA = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>';
+const XS = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const PLUS = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+const SHIELD14 = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/></svg>';
 const SHIELD = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/></svg>';
