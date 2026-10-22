@@ -5,7 +5,7 @@
 // direto pelo id. Postos corrigidos pelas pessoas no app (source = 'pessoas') ficam como estão.
 // Só aceita chamada com o cabeçalho x-cron igual ao segredo de push_keys (só o banco conhece).
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { nameTokens, rankForStation, sameSpot, type GoogleStation, type StationLike } from './casar.ts';
+import { brandConflict, nameTokens, rankForStation, sameSpot, type GoogleStation, type StationLike } from './casar.ts';
 
 const URL_ = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -60,7 +60,8 @@ async function order(cands: Cand[], s: StationLike): Promise<Cand[]> {
   const open = cands.filter((c) => c.g.status !== 'CLOSED_PERMANENTLY');
   if (open.length < 2) return open;
   const top = open[0];
-  const twins = open.filter((c) => c !== top && sameSpot(top.g, c.g, s) && c.v >= top.v - 2.5).slice(0, 2);
+  // cadastro com outra bandeira no nome não entra no desempate (pode ser o posto vizinho)
+  const twins = open.filter((c) => c !== top && sameSpot(top.g, c.g, s) && !brandConflict(c.g, s) && c.v >= top.v - 2.5).slice(0, 2);
   if (!twins.length) return open;
   const group: Cand[] = [top, ...twins];
   for (const c of group) {

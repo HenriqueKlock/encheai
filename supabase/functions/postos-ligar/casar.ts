@@ -100,6 +100,12 @@ export function rankForStation(places: GoogleStation[], s: StationLike): { g: Go
   return out.sort((a, b) => b.v - a.v);
 }
 
+/** O nome do lugar no Google traz outra bandeira grande que não a do posto na ANP. */
+export function brandConflict(g: GoogleStation, s: StationLike): boolean {
+  const gBrand = brandOf(g.name), sBrand = s.b in { Shell: 1, Ipiranga: 1, Petrobras: 1, Ale: 1 } ? s.b : null;
+  return !!gBrand && !!sBrand && gBrand !== sBrand;
+}
+
 /**
  * Dois lugares do Google que são o mesmo ponto físico deste posto: os dois com o endereço completo dele
  * (rua e número) ou a menos de 60 m um do outro. Acontece quando o posto troca de nome ou de bandeira e o
