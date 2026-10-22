@@ -137,6 +137,26 @@ class Fluxo(unittest.TestCase):
             self.assertEqual(dois['f']['ev'], [['2026-03-02', 'I', 'Bomba medidora com volume a menor']])
             self.assertEqual(doc['contagem']['cadastro'], 3)
             self.assertEqual(doc['contagem']['sem_local'], 1)
+            self.assertNotIn('o', um)  # sem --osm usar, o arquivo não muda
+
+            # OpenStreetMap: nome na fachada e ponto exato; o posto sem coordenada ganha ponto pelo endereço completo
+            osm = os.path.join(d, 'osm.json')
+            with open(osm, 'w', encoding='utf-8') as f:
+                json.dump([
+                    {'id': 'n1', 'la': -27.5902, 'lo': -48.5403, 'name': 'Posto Exemplo Centro', 'brand': '', 'street': 'Avenida Exemplo', 'num': '100', 'city': ''},
+                    {'id': 'n2', 'la': -27.6000, 'lo': -48.5500, 'name': 'Posto Quatro', 'brand': 'Shell', 'street': 'Rua Nova', 'num': '5', 'city': 'Florianópolis'},
+                    {'id': 'n3', 'la': -27.5000, 'lo': -48.4000, 'name': 'Posto Longe', 'brand': 'Ipiranga', 'street': 'Rua X', 'num': '9', 'city': 'Florianópolis'},
+                ], f)
+            subprocess.run([sys.executable, os.path.join(AQUI, 'postos.py'), '--estado', est, '--uf', 'SC', '--cad', cad, '--lpc', lpc, '--fisc', fisc, '--sem-geo', '--hoje', '2026-10-20', '--osm', 'usar', '--osm-arquivo', osm], check=True, capture_output=True)
+            with open(os.path.join(est, 'postos-SC.json'), encoding='utf-8') as f:
+                doc = json.load(f)
+            by = {p['c']: p for p in doc['postos']}
+            self.assertEqual(by['11111111000111']['o'], 'Posto Exemplo Centro')
+            self.assertEqual((by['11111111000111']['la'], by['11111111000111']['pg']), (-27.5902, 'n'))
+            self.assertEqual(by['44444444000144']['o'], 'Posto Quatro')
+            self.assertEqual(by['44444444000144']['la'], -27.6)
+            self.assertNotIn('o', by['22222222000122'])
+            self.assertEqual(doc['fontes']['osm'], '2026-10-20')
 
 
 if __name__ == '__main__':

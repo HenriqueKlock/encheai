@@ -748,7 +748,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (!words.length || !('center' in rs)) return [];
     const at = rs.center;
     const bb = bboxAround(at, 25);
-    const cands = stations().filter((s) => s.la > bb.s && s.la < bb.n && s.lo > bb.w && s.lo < bb.e && words.every((w) => norm(nm(s) + ' ' + s.n + ' ' + s.e + ' ' + s.br + ' ' + s.m + ' ' + s.b).includes(w)));
+    const cands = stations().filter((s) => s.la > bb.s && s.la < bb.n && s.lo > bb.w && s.lo < bb.e && words.every((w) => norm(nm(s) + ' ' + s.n + ' ' + (s.o ?? '') + ' ' + s.e + ' ' + s.br + ' ' + s.m + ' ' + s.b).includes(w)));
     return stationsFor(cands, { kind: 'ponto', at, radiusKm: 25 }, model(), own(), todayISO(), NO_G, network(), mine()).sort((a, b) => a.distKm - b.distKm).slice(0, 30);
   }
   function searchBody(rs: Resolved, rec: Recommendation) {
@@ -811,7 +811,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   function sourcesNote() {
     if (!file) return '';
     const w = file.fontes.lpc_semanas[0];
-    const g = 'Nomes e pontos dos postos: cadastro da ANP. Nota, fotos e avaliações do Google aparecem na ficha de cada posto, com o mapa do Google.';
+    const g = 'Nomes e pontos dos postos: cadastro da ANP, ' + (file.fontes.osm ? 'OpenStreetMap (© colaboradores do OpenStreetMap) ' : '') + 'e quem usa o app. Nota, fotos e avaliações do Google aparecem na ficha de cada posto, com o mapa do Google.';
     return '<p class="foot-note">Preços: o que a rede pagou nos últimos 7 dias, os seus abastecimentos e a pesquisa semanal da ANP' + (w ? ' (mais recente: ' + dm(w[0]) + ' a ' + dm(w[1]) + ')' : '') + '. Sugerido: o menor custo para rodar (preço, combustível, desvio e rendimento medido), pesado pela confiabilidade (fiscalização da ANP nos últimos 5 anos, avaliações da rede e as suas) e pela idade do preço; o menor preço aparece à parte. ' + g + ' Distâncias aproximadas.</p>';
   }
 

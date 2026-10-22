@@ -14,6 +14,8 @@ export interface Station {
   la: number;
   lo: number;
   pg: 'n' | 'r' | 'b'; // precisão do ponto: número, rua, bairro
+  /** Nome no OpenStreetMap (o da fachada, quando alguém cadastrou lá). */
+  o?: string;
   pr?: Partial<Record<PriceCode, [number, string]>>;
   f?: { n: number; ult: string; ev: [string, EventType, string][] };
 }
@@ -22,7 +24,7 @@ export interface StationsFile {
   v: number;
   uf: string[];
   gerado: string;
-  fontes: { lpc_semanas: [string, string][]; fisc_desde: string; fisc_ate: string | null; cadastro: string };
+  fontes: { lpc_semanas: [string, string][]; fisc_desde: string; fisc_ate: string | null; cadastro: string; osm?: string };
   postos: Station[];
 }
 

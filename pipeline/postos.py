@@ -36,6 +36,8 @@ LPC_PAGE = 'https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrenci
 CAD_URL = 'https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/arquivos/arquivos-dados-cadastrais-dos-revendedores-varejistas-de-combustiveis-automotivos/dados-cadastrais-revendedores-varejistas-combustiveis-automoveis.csv'
 FISC_URL = 'https://www.gov.br/anp/pt-br/centrais-de-conteudo/paineis-dinamicos-da-anp/arquivos-dados-brutos-do-painel-dinamico-da-fiscalizacao-do-abastecimento-da-sfi/dados-fisc-a-partir-2019.xlsx'
 NOMINATIM = 'https://nominatim.openstreetmap.org/search'
+# Postos do OpenStreetMap (ODbL: pode guardar e redistribuir citando "© colaboradores do OpenStreetMap")
+OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
 
 UF_NOME = {
     'AC': 'Acre', 'AL': 'Alagoas', 'AP': 'Amapá', 'AM': 'Amazonas', 'BA': 'Bahia', 'CE': 'Ceará', 'DF': 'Distrito Federal',
@@ -492,6 +494,121 @@ class Geo:
 
 
 # ---------------------------------------------------------------------------
+# OpenStreetMap: nome na fachada e ponto exato dos postos (dados abertos, ODbL)
+BIG = {'SHELL': 'Shell', 'RAIZEN': 'Shell', 'IPIRANGA': 'Ipiranga', 'PETROBRAS': 'Petrobras', 'BR': 'Petrobras', 'VIBRA': 'Petrobras', 'ALE': 'Ale', 'ALESAT': 'Ale'}
+NOME_COMUM = {'POSTO', 'POSTOS', 'AUTO', 'AUTOPOSTO', 'COMERCIO', 'COMBUSTIVEIS', 'COMBUSTIVEL', 'DERIVADOS', 'PETROLEO', 'LTDA', 'SERVICOS',
+              'SERVICO', 'DE', 'DA', 'DO', 'DOS', 'DAS', 'REDE', 'CONVENIENCIA', 'ABASTECIMENTO', 'EIRELI', 'CENTRO', 'GAS', 'STATION'}
+TIPO_VIA = {'RUA', 'RODOVIA', 'AVENIDA', 'ALAMEDA', 'TRAVESSA', 'ESTRADA', 'PRACA', 'SERVIDAO', 'ROD', 'AV', 'R', 'VIA', 'ACESSO', 'MARGINAL'}
+
+
+def words(s) -> list[str]:
+    return re.findall(r'[A-Z0-9]+', unicodedata.normalize('NFKD', str(s or '')).encode('ascii', 'ignore').decode().upper())
+
+
+def name_tokens(s) -> set[str]:
+    return {w for w in words(s) if len(w) >= 3 and w not in NOME_COMUM and w not in BIG and not w.isdigit()}
+
+
+def brand_of(s) -> str | None:
+    for w in words(s):
+        if w in BIG:
+            return BIG[w]
+    return None
+
+
+def street_tokens(s) -> set[str]:
+    s = clean_street(s)
+    hw = {a + b for a, b in re.findall(r'\b(SC|BR)-?(\d{3})\b', s)}
+    return hw | {w for w in words(s) if len(w) >= 3 and w not in TIPO_VIA and not w.isdigit() and not re.fullmatch(r'(SC|BR)\d{3}', w)}
+
+
+def dist_km(a_la, a_lo, b_la, b_lo) -> float:
+    r = math.radians
+    h = math.sin(r(b_la - a_la) / 2) ** 2 + math.cos(r(a_la)) * math.cos(r(b_la)) * math.sin(r(b_lo - a_lo) / 2) ** 2
+    return 2 * 6371 * math.asin(min(1, math.sqrt(h)))
+
+
+def fetch_osm(uf: str) -> list[dict] | None:
+    """Todos os postos (amenity=fuel) do estado no OpenStreetMap, pelo Overpass. None se não respondeu."""
+    q = f'[out:json][timeout:240];area["ISO3166-2"="BR-{uf}"]["admin_level"="4"]->.a;nwr["amenity"="fuel"](area.a);out center tags;'
+    for url in OVERPASS:
+        try:
+            data = json.loads(http_get(url + '?' + urllib.parse.urlencode({'data': q}), tries=2, ua=NOMINATIM_UA, timeout=300))
+        except Exception as e:  # noqa: BLE001
+            log('   overpass falhou:', url, e)
+            continue
+        out = []
+        for e in data.get('elements', []):
+            c = e.get('center') or {}
+            la, lo = e.get('lat', c.get('lat')), e.get('lon', c.get('lon'))
+            if la is None or lo is None:
+                continue
+            tg = e.get('tags') or {}
+            out.append({'id': e.get('type', 'x')[0] + str(e.get('id')), 'la': round(la, 6), 'lo': round(lo, 6),
+                        'name': (tg.get('name') or '').strip()[:60], 'brand': (tg.get('brand') or tg.get('operator') or '').strip()[:40],
+                        'street': tg.get('addr:street') or '', 'num': tg.get('addr:housenumber') or '', 'city': tg.get('addr:city') or ''})
+        return out
+    return None
+
+
+def osm_score(p: dict, la, lo, prec, o: dict) -> float:
+    """O quanto um posto do OpenStreetMap parece ser este posto da ANP (endereço, nome, bandeira, distância)."""
+    num = digits(p.get('num'))
+    num_ok = bool(num) and digits(o['num']) == num
+    street_ok = len(street_tokens(p.get('end')) & street_tokens(o['street'])) >= 1
+    addr = num_ok and street_ok
+    if la is None:
+        # posto sem coordenada: só pelo endereço completo, na mesma cidade
+        return 4.0 if addr and o['city'] and norm(o['city']) == norm(p.get('mun')) else 0
+    d = dist_km(la, lo, o['la'], o['lo'])
+    if d > (5 if addr else {'n': 0.35, 'r': 1.5, 'b': 3.0}.get(prec, 1.0)):
+        return 0
+    ov = len(name_tokens((p.get('fantasia') or '') + ' ' + (p.get('razao') or '')) & name_tokens(o['name']))
+    ob = brand_of(o['brand'] + ' ' + o['name'])
+    pb = display_flag(p.get('bandeira', ''))
+    pb = pb if pb in ('Shell', 'Ipiranga', 'Petrobras', 'Ale') else None
+    s = (3 if addr else 1 if street_ok else 0) + min(ov, 2) * 1.5 + (1 if ob and ob == pb else 0)
+    s += 2 if d < 0.05 else 1.2 if d < 0.15 else 0.6 if d < 0.3 else 0
+    if ob and pb and ob != pb:
+        s -= 2
+    evidence = addr or ov > 0 or d < 0.08 or (ob is not None and ob == pb and d < 0.2)
+    return s if evidence and s >= 2.5 else 0
+
+
+def match_osm(cad: dict, geo_cache: dict, osm: list[dict]) -> dict[str, tuple[dict, float]]:
+    """Liga cada posto do OpenStreetMap a no máximo um posto da ANP (os pares mais parecidos primeiro)."""
+    grid: dict[tuple[int, int], list[dict]] = {}
+    for o in osm:
+        grid.setdefault((int(o['la'] // 0.05), int(o['lo'] // 0.05)), []).append(o)
+    by_addr: dict[tuple[str, str], list[dict]] = {}
+    for o in osm:
+        if o['num'] and o['city']:
+            by_addr.setdefault((norm(o['city']), digits(o['num'])), []).append(o)
+    pairs = []
+    for cnpj, p in cad.items():
+        g = geo_cache.get(cnpj) or {}
+        if g.get('p') is not None and g.get('k') == addr_key(p):
+            la, lo, prec = g['la'], g['lo'], g['p']
+            gy, gx = int(la // 0.05), int(lo // 0.05)
+            cands = [o for dy in (-1, 0, 1) for dx in (-1, 0, 1) for o in grid.get((gy + dy, gx + dx), [])]
+        else:
+            la = lo = prec = None
+            cands = by_addr.get((norm(p.get('mun')), digits(p.get('num'))), [])
+        for o in cands:
+            s = osm_score(p, la, lo, prec, o)
+            if s:
+                pairs.append((s, cnpj, o))
+    pairs.sort(key=lambda x: -x[0])
+    used, out = set(), {}
+    for s, cnpj, o in pairs:
+        if cnpj in out or o['id'] in used:
+            continue
+        used.add(o['id'])
+        out[cnpj] = (o, s)
+    return out
+
+
+# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--modo', default='completo', choices=['completo', 'probe'])
@@ -503,6 +620,9 @@ def main():
     ap.add_argument('--lpc', nargs='*', help='planilhas LPC locais (testes)')
     ap.add_argument('--fisc', help='planilha local da fiscalização (testes)')
     ap.add_argument('--sem-geo', action='store_true', help='não consulta o Nominatim (testes)')
+    ap.add_argument('--osm', default='relatorio', choices=['usar', 'relatorio', 'nao'],
+                    help='OpenStreetMap: usar (nome e ponto no arquivo), relatorio (só um relatório para conferir) ou nao')
+    ap.add_argument('--osm-arquivo', help='postos do OpenStreetMap em arquivo local (testes)')
     ap.add_argument('--hoje', default=None)
     a = ap.parse_args()
     ufs = {u.strip().upper() for u in a.uf.split(',') if u.strip()}
@@ -622,28 +742,77 @@ def main():
         log('  limite de consultas desta rodada atingido; o resto fica para a próxima')
     save('geocache.json', geo_cache)
 
-    # 5) Arquivo público
+    # 5) OpenStreetMap: nome na fachada e ponto exato (dados abertos, guardados na branch dados)
+    osm_match: dict[str, tuple[dict, float]] = {}
+    osm_quando = None
+    if a.osm != 'nao':
+        log('OpenStreetMap…')
+        osm_cache = load(f'osm-{"-".join(sorted(ufs))}.json', {})
+        osm = None
+        if a.osm_arquivo:
+            osm = json.load(open(a.osm_arquivo, encoding='utf-8'))
+        elif not a.sem_geo:
+            osm = fetch_osm(sorted(ufs)[0])
+        if osm is not None:
+            osm_cache = {'em': today.isoformat(), 'postos': osm}
+            save(f'osm-{"-".join(sorted(ufs))}.json', osm_cache)
+        osm = osm_cache.get('postos') or []
+        osm_quando = osm_cache.get('em')
+        osm_match = match_osm(cad, geo_cache, osm) if osm else {}
+        log(f'  {len(osm)} postos no OpenStreetMap; {len(osm_match)} ligados a postos da ANP')
+
+    def osm_use(cnpj, g):
+        """(nome, ponto) do OpenStreetMap para este posto: o ponto só quando a ligação é forte ou o nosso é aproximado."""
+        m = osm_match.get(cnpj)
+        if not m:
+            return None, None
+        o, s = m
+        point = (o['la'], o['lo']) if (g.get('p') in (None, 'r', 'b') or s >= 3.5) else None
+        return (o['name'] or None), point
+
+    if a.osm == 'relatorio' and osm_match:
+        rel = []
+        for cnpj, (o, s) in sorted(osm_match.items()):
+            p = cad[cnpj]
+            g = geo_cache.get(cnpj) or {}
+            nome, ponto = osm_use(cnpj, g)
+            rel.append({'c': cnpj, 'mun': title(p['mun']), 'anp': display_name(p), 'osm': o['name'], 'nota': round(s, 2), 'antes': g.get('p'),
+                        'move_m': round(dist_km(g['la'], g['lo'], ponto[0], ponto[1]) * 1000) if ponto and g.get('la') is not None else None,
+                        'ganha_ponto': g.get('p') is None and ponto is not None})
+        save(f'osm-relatorio-{"-".join(sorted(ufs))}.json', {'em': today.isoformat(), 'ligados': len(rel), 'postos': rel})
+
+    # 6) Arquivo público
     postos = []
     for cnpj, p in cad.items():
         g = geo_cache.get(cnpj) or {}
-        if g.get('p') is None or g.get('k') != addr_key(p):
+        if g.get('k') != addr_key(p):
+            g = {}
+        nome_osm, ponto_osm = osm_use(cnpj, g) if a.osm == 'usar' else (None, None)
+        if g.get('p') is None and not ponto_osm:
             continue
         num = digits(p['num'])
         endereco = title(clean_street(p['end'])) + (', ' + num if num else '')
         item = {
             'c': cnpj, 'n': display_name(p), 'b': display_flag(p['bandeira']), 'e': endereco[:90],
-            'br': title(p['bairro'])[:40], 'm': g.get('mn') if norm(g.get('mn')) == norm(p['mun']) else title(p['mun']), 'la': g['la'], 'lo': g['lo'], 'pg': g['p'],
+            'br': title(p['bairro'])[:40], 'm': g.get('mn') if g.get('mn') and norm(g.get('mn')) == norm(p['mun']) else title(p['mun']),
+            'la': g.get('la'), 'lo': g.get('lo'), 'pg': g.get('p'),
         }
+        if ponto_osm:
+            # ponto do OpenStreetMap: é o do próprio posto (melhor que o do endereço)
+            item['la'], item['lo'], item['pg'] = ponto_osm[0], ponto_osm[1], 'n'
+        if nome_osm:
+            item['o'] = nome_osm
         if cnpj in prices:
             item['pr'] = prices[cnpj]
         if cnpj in fisc:
             item['f'] = fisc[cnpj]
         postos.append(item)
     postos.sort(key=lambda x: x['c'])
-    sem = sum(1 for p in cad.values() if (geo_cache.get(p['cnpj']) or {}).get('p') is None)
+    sem = len(cad) - len(postos)
     doc = {
         'v': 1, 'uf': sorted(ufs), 'gerado': dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-        'fontes': {'lpc_semanas': weeks, 'fisc_desde': since, 'fisc_ate': fisc_last, 'cadastro': today.isoformat()},
+        'fontes': {'lpc_semanas': weeks, 'fisc_desde': since, 'fisc_ate': fisc_last, 'cadastro': today.isoformat(),
+                   **({'osm': osm_quando} if a.osm == 'usar' and osm_quando else {})},
         'contagem': {'cadastro': len(cad), 'com_local': len(postos), 'sem_local': sem, 'com_preco': sum(1 for x in postos if 'pr' in x)},
         'postos': postos,
     }
