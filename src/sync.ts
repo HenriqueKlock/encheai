@@ -464,7 +464,9 @@ export async function googlePhoto(name: string): Promise<string | null> {
 /** Chama a função postos-google; sem login ou sem chave devolve configured=false. */
 export async function googlePlaces<T>(body: { mode: GoogleMode; lat?: number; lon?: number; radius_m?: number; query?: string; session?: string; id?: string }): Promise<{ configured: boolean; places: T[] }> {
   if (!(await currentSession())) return { configured: false, places: [] };
-  const { data, error } = await supabase.functions.invoke('postos-google', { body });
+  // sem resposta em 12 s, desiste (a tela não fica presa em "procurando")
+  const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('O Google demorou para responder.')), 12000));
+  const { data, error } = await Promise.race([supabase.functions.invoke('postos-google', { body }), timeout]);
   if (error) throw error;
   return data as { configured: boolean; places: T[] };
 }

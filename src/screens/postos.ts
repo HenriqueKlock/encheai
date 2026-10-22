@@ -74,6 +74,16 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   const gmatch = new Map<string, GoogleMatch>();
   const google = new Map<string, { rating: number; count: number }>();
   const gTried = new Set<string>();
+  /** Postos sendo procurados no Google agora (só eles mostram "procurando"). */
+  const gPending = new Set<string>();
+  /** O que dizer quando não há nota do Google para o posto. */
+  const gStatus = (c: string, short: boolean) =>
+    gBlocked ? (short ? 'indisponível' : gBlocked)
+      : gmatch.has(c) ? 'sem nota no Google'
+      : gPending.has(c) ? 'procurando…'
+      : googleOn === false ? 'não configurado'
+      : gTried.has(c) ? (short ? 'não achado' : 'não encontrado')
+      : googleOn ? (short ? 'sem nota' : 'sem nota no Google') : (short ? 'com a conta' : 'disponível com a conta conectada');
   const nm = (s: Station) => gmatch.get(s.c)?.name || s.n;
   let adjusted: Station[] | null = null;
   function stations(): Station[] {
@@ -951,7 +961,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       : '<span class="hint">' + (rat?.n ? pl(rat.n, 'avaliação', 'avaliações') + ' até agora; cada item aparece com 3 respostas.' : 'Ainda sem avaliações. Depois de abastecer aqui, o app pergunta em um toque.') + '</span>';
     const ratCard =
       '<div class="card"><div class="card-head"><span>Quem abasteceu avaliou</span><span class="hint">' + (rat?.n ? pl(rat.n, 'avaliação', 'avaliações') + ' · 6 meses' : '') + '</span></div>' + ratBody +
-      '<span class="hint">No Google: ' + (g ? fmt(g.rating, 1) + ' em ' + g.count.toLocaleString('pt-BR') + ' avaliações' : gBlocked ? esc(gBlocked) : googleOn ? (gTried.has(s.c) && !gm ? 'não encontrado' : 'procurando…') : googleOn === false ? 'não configurado' : 'disponível com a conta conectada') + '</span></div>';
+      '<span class="hint">No Google: ' + (g ? fmt(g.rating, 1) + ' em ' + g.count.toLocaleString('pt-BR') + ' avaliações' : esc(gStatus(s.c, false))) + '</span></div>';
 
     // Confiabilidade (ANP)
     const lvl = rel.level === 'ok' ? 'Confiável' : rel.level === 'atencao' ? 'Atenção' : 'Evitar';
@@ -1026,7 +1036,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         dp ? { p: Math.round(((dp.normal + dp.melhor) / dp.n) * 100), label: 'carro sem problema' } : null,
         share(rat?.banheiro, 'banheiro'),
       ].filter((c): c is { p: number; label: string } => !!c);
-      const gSub = g ? g.count.toLocaleString('pt-BR') + ' notas' : gBlocked ? 'indisponível' : googleOn ? (gTried.has(s.c) && !gm ? 'não achado' : 'procurando…') : googleOn === false ? 'não configurado' : 'com a conta';
+      const gSub = g ? g.count.toLocaleString('pt-BR') + ' notas' : gStatus(s.c, true);
       const whyBox =
         '<div class="card why2"><b class="why2-t">De onde vem o ' + fmt(rel.score, 1) + '</b><div class="why2-tiles">' +
         tile('ANP', fmt(rel.anp, 1), rel.infractions ? pl(rel.infractions, 'infração', 'infrações') : s.f ? 'sem infração' : 'sem registro') +
@@ -1231,6 +1241,15 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
    */
   async function lookupStation(s: Station) {
     gTried.add(s.c);
+    gPending.add(s.c);
+    try {
+      await lookupInner(s);
+    } finally {
+      // se a busca falhou no meio, tira o "procurando" mesmo assim
+      if (gPending.delete(s.c) && shown?.c === s.c) { renderPosto(s); setTimeout(() => showMap(s), 50); }
+    }
+  }
+  async function lookupInner(s: Station) {
     const byAddr = await searchFor('posto:' + s.c, 'posto de combustível ' + s.e + ', ' + (s.br ? s.br + ', ' : '') + s.m + ' - SC', s);
     let hit = byAddr ? bestForStation(byAddr, s) : null;
     if (!hit && byAddr && nameTokens(s.n).length) {
@@ -1238,6 +1257,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       hit = byName ? bestForStation(byName, s) : null;
     }
     if (hit) addMatches(new Map([[s.c, hit]]));
+    gPending.delete(s.c);
     if (shown?.c === s.c) {
       renderPosto(s);
       const gm = gmatch.get(s.c);
