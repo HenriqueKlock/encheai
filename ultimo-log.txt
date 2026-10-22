@@ -19,8 +19,7 @@ Coordenadas…
   limite de consultas desta rodada atingido; o resto fica para a próxima
   gravado estado/geocache.json (255 KB)
 OpenStreetMap…
-  falhou (HTTP Error 502: Bad Gateway); tentando de novo em 5s
   gravado estado/osm-SC.json (209 KB)
   1577 postos no OpenStreetMap; 508 ligados a postos da ANP
-  gravado estado/postos-SC.json (492 KB)
+  gravado estado/postos-SC.json (494 KB)
 Resumo: {"cadastro": 2103, "com_local": 1867, "sem_local": 236, "com_preco": 217}
