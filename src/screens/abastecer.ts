@@ -12,6 +12,7 @@ import { $, ago, brl, closeSheets, dm, esc, fmt, km, openSheet, pl, todayISO, to
 import { go } from '../router';
 import { stationLabel, type PostosApi } from './postos';
 import { ICON } from '../icons';
+import { isNovo } from '../visual';
 
 type Picked = { s: Station; how: 'gps' | 'escolha' | 'registro'; d?: number } | { s: null; text: string } | null;
 
@@ -176,15 +177,60 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     const el = $('f-fuel-hint');
     const v = current();
     el.hidden = true;
+    fuelCards(null, null);
     if (!v || v.fuel_type !== 'flex' || !picked?.s) return;
-    const g = postos.priceAt(picked.s, 'gasolina'), e = postos.priceAt(picked.s, 'etanol');
-    if (!g || !e || ageDays(g.date, todayISO()) > 30 || ageDays(e.date, todayISO()) > 30) return;
+    const fresh = (pp: PricePoint | null) => (pp && ageDays(pp.date, todayISO()) <= 30 ? pp : null);
+    const g = fresh(postos.priceAt(picked.s, 'gasolina')), e = fresh(postos.priceAt(picked.s, 'etanol'));
+    fuelCards(g, e);
+    if (!g || !e) return;
     const m = carInfo().model;
     const ratio = m.kmlE / m.kmlG;
     const pct = e.price / g.price;
     el.innerHTML = (pct < ratio ? '<b>Etanol compensa aqui</b>' : '<b>Gasolina compensa aqui</b>') + ': etanol a ' + brl(e.price) + ' é ' + Math.round(pct * 100) + '% da gasolina; no seu carro rende ' + Math.round(ratio * 100) + '%.';
     el.hidden = false;
   }
+
+  /** Visual novo: o preço de cada combustível no próprio botão e a dica de qual compensa. */
+  function fuelCards(g: PricePoint | null, e: PricePoint | null) {
+    const v = current();
+    const tip = $('f-tip');
+    $('f-fp-g').textContent = g ? fmt(g.price, 2) : '–';
+    $('f-fp-e').textContent = e ? fmt(e.price, 2) : '–';
+    $('f-fn-g').textContent = '';
+    $('f-fn-e').textContent = '';
+    tip.hidden = true;
+    if (!v || v.fuel_type !== 'flex') return;
+    const m = carInfo().model;
+    const ratio = m.kmlE / m.kmlG;
+    if (!g || !e) {
+      if (g) { tip.innerHTML = LEAF + '<span>Etanol rende ' + Math.round(ratio * 100) + '% da gasolina no ' + esc(v.name) + ': compensa até ' + brl(g.price * ratio) + '.</span>'; tip.hidden = false; }
+      return;
+    }
+    const cg = (m.kmTank / m.kmlG) * g.price, ce = (m.kmTank / m.kmlE) * e.price;
+    const win = ce < cg ? 'e' : 'g';
+    const diff = Math.round(Math.abs(cg - ce));
+    $(win === 'e' ? 'f-fn-e' : 'f-fn-g').textContent = 'compensa no ' + v.name;
+    $(win === 'e' ? 'f-fn-g' : 'f-fn-e').textContent = diff >= 1 ? 'R$ ' + diff + ' a mais no tanque' : 'quase o mesmo';
+    tip.innerHTML = LEAF + '<span>Etanol rende ' + Math.round(ratio * 100) + '% da gasolina no ' + esc(v.name) + ': compensa até ' + brl(g.price * ratio) + '.</span>';
+    tip.hidden = false;
+  }
+
+  /** Visual novo: com o preço conhecido, os litros saem do valor pago numa linha; senão, os campos aparecem. */
+  let adjust = false;
+  function calcLine() {
+    const box = $('f-calc');
+    const t = parseNum($<HTMLInputElement>('f-total').value), l = parseNum($<HTMLInputElement>('f-liters').value), p = parseNum($<HTMLInputElement>('f-price').value);
+    const known = p > 0 && !adjust && !editing;
+    $('fill-sheet').classList.toggle('pl-hide', known);
+    box.hidden = !(p > 0) || adjust || !!editing;
+    box.innerHTML = '= <b>' + (t > 0 && l > 0 ? fmt(l, 1) + ' litros' : '– litros') + '</b> a ' + brl(p) + '/l <button type="button" class="link-btn" data-adj>Ajustar</button>';
+  }
+  $('f-calc').addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-adj]')) return;
+    adjust = true;
+    calcLine();
+    setTimeout(() => $<HTMLInputElement>('f-price').focus(), 30);
+  });
 
   /* ---------- formulário ---------- */
   function open(id: string | null, at?: { s: Station; fuel: Fuel | null; price: PricePoint | null }) {
@@ -195,6 +241,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     }
     editing = id ? S.logs.find((f) => f.id === id) ?? null : null;
     delArmed = false;
+    adjust = false;
     pickerOpen = false;
     pickerQ = '';
     priceAuto = false;
@@ -203,7 +250,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     del.classList.remove('armed');
     del.textContent = 'Excluir';
     $('fill-title').textContent = editing ? 'Editar abastecimento' : 'Abastecer';
-    $('f-save').textContent = editing ? 'Salvar alterações' : 'Salvar';
+    $('f-save').textContent = editing ? 'Salvar alterações' : isNovo() ? 'Salvar abastecimento' : 'Salvar';
     $('f-err').hidden = true;
     $('f-price-hint').hidden = true;
     const fs = carLogs();
@@ -267,6 +314,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     const v = current();
     if (!v) return;
     fuelHint();
+    calcLine();
     const others = carLogs().filter((f) => !editing || f.id !== editing.id);
     const odo = parseIntLoose($<HTMLInputElement>('f-odo').value);
     const before = Number.isFinite(odo) ? others.filter((f) => f.odometer_km < odo).pop() : others[others.length - 1];
@@ -435,9 +483,75 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
   };
   const STAR = '<svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24"><path d="M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="currentColor"/></svg>';
 
+  /** Visual novo: topo "Abastecido.", estrelas com etiquetas de um toque e o combustível anterior em 2×2. */
+  const CHIP: Record<'bomba' | 'atendimento' | 'banheiro', [string, string]> = {
+    bomba: ['Bomba marcou certo', 'Bomba marcou errado'],
+    atendimento: ['Bom atendimento', 'Atendimento ruim'],
+    banheiro: ['Banheiro limpo', 'Banheiro ruim'],
+  };
+  /** Quanto o abastecimento saiu mais barato que o outro combustível no mesmo posto (para o mesmo km). */
+  function savedVsOther(f: FuelLog): number {
+    if (f.fuel !== 'etanol' && f.fuel !== 'gasolina') return 0;
+    const st = f.station_id ? postos.byId(f.station_id) : null;
+    const m = carInfo().model;
+    if (!st || m.fuels.length < 2) return 0;
+    const other: Fuel = f.fuel === 'etanol' ? 'gasolina' : 'etanol';
+    const op = postos.priceAt(st, other);
+    if (!op || ageDays(op.date, todayISO()) > 30) return 0;
+    const km = f.liters * (f.fuel === 'etanol' ? m.kmlE : m.kmlG);
+    return (km / (other === 'etanol' ? m.kmlE : m.kmlG)) * op.price - f.total_brl;
+  }
+  function renderRatingNovo(r: Sheet) {
+    const sheet = $('rate-sheet');
+    sheet.classList.toggle('rate2-full', !!r.saved);
+    const parts: string[] = [];
+    if (r.saved) {
+      const f = r.saved;
+      const save = savedVsOther(f);
+      parts.push('<div class="rate2-head"><span class="ok2">' + CHECK2 + '</span><h2 id="rate-title">Abastecido.</h2><span>' + fmt(f.liters, 1) + ' l de ' + f.fuel + ' · ' + brl(f.total_brl) +
+        (save >= 1 ? ' · <b>R$ ' + Math.round(save) + ' a menos</b> que ' + (f.fuel === 'etanol' ? 'gasolina' : 'etanol') : '') + '</span></div>');
+    }
+    if (r.fill) {
+      const f = r.fill;
+      const stars = '<div class="stars2" role="radiogroup" aria-label="Nota geral do posto">' +
+        [1, 2, 3, 4, 5].map((n) => '<button type="button" role="radio" data-star="' + n + '" aria-label="' + n + (n === 1 ? ' estrela' : ' estrelas') + '" aria-checked="' + (r.stars === n) + '" class="' + (r.stars != null && n <= r.stars ? 'on' : '') + '"' + (r.locked ? ' disabled' : '') + '>' + STAR + '</button>').join('') + '</div>';
+      const chips = (['bomba', 'atendimento', 'banheiro'] as const).map((k) => {
+        const v = r[k];
+        const label = v === -1 ? CHIP[k][1] : CHIP[k][0];
+        return '<button type="button" class="chip2' + (v === 1 ? ' good' : v === -1 ? ' bad' : '') + '" data-chip="' + k + '" aria-label="' + esc(CHIP[k][0]) + ': ' + (v === 1 ? 'sim' : v === -1 ? 'não' : 'sem resposta') + '"' + (r.locked ? ' disabled' : '') + '>' + (v === 1 ? '✓ ' : v === -1 ? '✕ ' : '') + label + '</button>';
+      }).join('');
+      parts.push('<div class="card rate2"><b class="rate2-t"' + (r.saved ? '' : ' id="rate-title"') + '>' + (r.existed && !r.saved ? 'Sua avaliação' : 'Como foi no posto?') + '</b>' +
+        (r.saved ? '' : '<span class="hint">' + dm(f.date) + ' · ' + esc(stationName(f)) + '</span>') + stars +
+        '<div class="chips2">' + chips + '</div><span class="hint">1 toque: sim · 2 toques: não. Sem o seu nome.</span></div>');
+    }
+    if (r.after) {
+      const a = r.after;
+      const same = r.fill?.id === a.id;
+      const delta = tankVsNormal(carIntervals(), a.id);
+      const measured = delta == null ? '' : '<span class="hint">Pelos seus números, esse tanque rendeu ' + (Math.abs(delta) < 0.02 ? 'como o seu normal' : Math.round(Math.abs(delta) * 100) + '% ' + (delta > 0 ? 'acima' : 'abaixo') + ' do seu normal') + '.</span>';
+      const AFTER_V2: Record<AfterEffect, string> = { normal: 'Andou normal', melhor: 'Melhor que o normal', falhou: 'Falhou ou engasgou', rendeu_menos: 'Rendeu menos' };
+      parts.push('<div class="card rate2" role="radiogroup" aria-label="Como o carro andou"><div class="rate2-h"><b class="rate2-t"' + (!r.saved && !r.fill ? ' id="rate-title"' : '') + '>' + (same ? 'Como o carro andou com esse combustível?' : r.fill || r.saved ? 'E o combustível anterior?' : 'Como o carro andou?') + '</b>' +
+        (same ? '' : '<span class="hint">' + esc(stationName(a)) + ', ' + dm(a.date) + '. Desde então, o carro…</span>') + '</div>' + measured +
+        '<div class="after2">' + AFTER_OPTIONS.map(([v]) => '<button type="button" role="radio" data-after="' + v + '" aria-checked="' + (r.afterVal === v) + '"' + (r.afterLocked ? ' disabled' : '') + '>' + AFTER_V2[v] + '</button>').join('') + '</div></div>');
+    }
+    const n = (['bomba', 'atendimento', 'banheiro'] as const).filter((k) => r[k] !== null).length + (r.stars ? 1 : 0) + (r.afterVal && !r.afterLocked ? 1 : 0);
+    const note = r.locked ? '<p class="hint">Já passaram 30 dias desse abastecimento: dá para apagar a avaliação, mas não mudar.</p>' : '';
+    const send = '<button type="button" class="btn primary" data-rate="send"' + (n ? '' : ' disabled') + '>' + (r.existed ? 'Salvar' : 'Enviar') + '</button>';
+    const btns = r.saved
+      ? '<button type="button" class="btn" data-rate="skip">Pular</button>' + send
+      : r.locked
+        ? '<button type="button" class="btn" data-rate="skip">Fechar</button><button type="button" class="btn danger" data-rate="del">Apagar avaliação</button>'
+        : r.existed
+          ? '<button type="button" class="btn danger" data-rate="del">Apagar</button>' + send
+          : '<button type="button" class="btn" data-rate="skip">Cancelar</button>' + send;
+    $('rate-body').innerHTML = parts.join('') + note + '<div class="btn-row rate2-btns">' + btns + '</div>';
+  }
+
   function renderRating() {
     if (!rating) return;
     const r = rating;
+    if (isNovo()) return renderRatingNovo(r);
+    $('rate-sheet').classList.remove('rate2-full');
     const parts: string[] = [];
     if (r.saved) {
       const f = r.saved;
@@ -509,6 +623,12 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
       rating[k] = v === 0 ? null : rating[k] === v ? null : v;
       return renderRating();
     }
+    const ch = el.closest<HTMLElement>('[data-chip]');
+    if (ch && !rating.locked) {
+      const k = ch.dataset.chip as 'bomba' | 'atendimento' | 'banheiro';
+      rating[k] = rating[k] === null ? 1 : rating[k] === 1 ? -1 : null;
+      return renderRating();
+    }
     const st = el.closest<HTMLElement>('[data-star]');
     if (st && !rating.locked) {
       const v = Number(st.dataset.star);
@@ -557,4 +677,6 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
   return { open, openAt: (s: Station, fuel: Fuel | null, price: PricePoint | null) => open(null, { s, fuel, price }), openRating, answerAfter };
 }
 
+const CHECK2 = '<svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>';
+const LEAF = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 5.5-13 14-14 0 8.5-5.5 14-14 14z"/><path d="M5 19l8-8"/></svg>';
 const PIN = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';

@@ -7,12 +7,19 @@ import { kmlBars, monthBars, priceLine, sparkBars } from '../charts';
 import { setHomePrefs } from '../sync';
 import { S, carIntervals, carLogs, carServices, current, subscribe, type CalcCfg } from '../store';
 import { initMaintenance, currentKmOf } from '../manut';
-import { $, brl, cap, closeSheets, dm, esc, fmt, km, openSheet, pl, todayISO, toast, FUEL_LABEL } from '../ui';
+import { $, brl, cap, closeSheets, dm, esc, fmt, km, monthYear, openSheet, pl, todayISO, toast, FUEL_LABEL } from '../ui';
 import { currentRoute, onShow, type Route } from '../router';
 import { parseIntLoose } from '../calc';
 import { ICON } from '../icons';
+import { isNovo } from '../visual';
+import { planOf } from '../plans';
+import { itemStates, lastDoneByKey, progressOf, sortStates } from '../maintenance';
 import { AFTER_SHORT, canAskAfter, usedEnough, type AfterEffect } from '../depois';
 
+const FUEL_TYPE: Record<string, string> = { flex: 'flex', gasolina: 'gasolina', etanol: 'etanol', diesel: 'diesel' };
+const SWAP = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg>';
+const UP = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>';
+const DOWN = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>';
 const SVC_LABEL = { revisao: 'Revisão', corretiva: 'Conserto', pneus: 'Pneus', outros: 'Manutenção' } as const;
 
 export function initCarro(fill: { open: (id: string | null) => void; openRating: (id: string) => void }) {
@@ -36,6 +43,7 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
       $('carro-hist').hidden = sub !== 'historico';
       $('v-manut').hidden = sub !== 'manutencao';
       if (sub === 'resumo') renderResumo(v);
+      if (sub !== 'resumo') renderHead2(v);
       if (sub === 'historico') renderHist(v);
       if (sub === 'manutencao') maint.render({ vehicle: v, logs: carLogs(), services: S.services, items: S.items, pending: S.files });
     }
@@ -44,8 +52,70 @@ export function initCarro(fill: { open: (id: string | null) => void; openRating:
   }
 
   /* ---------- resumo ---------- */
+  /** Visual novo: o nome do carro como título, consumo com barras e números, manutenção com anéis. */
+  function renderHead2(v: Vehicle | undefined) {
+    const el = $('carro-head2');
+    if (!isNovo()) { el.innerHTML = ''; return; }
+    const curKm = v ? currentKmOf(v, carLogs(), S.services) : 0;
+    const sub = v ? [[v.make, v.year].filter(Boolean).join(' '), FUEL_TYPE[v.fuel_type] ?? '', curKm ? km(curKm) + ' km' : ''].filter(Boolean).join(' · ') : '';
+    el.innerHTML = '<div class="car2-head"><div><h1>' + esc(v ? v.name : 'Meu carro') + '</h1>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + '</div>' +
+      '<button type="button" class="x2" data-act="cars" aria-label="Trocar de carro">' + SWAP + '</button></div>';
+  }
+
+  function renderResumoNovo(v: Vehicle) {
+    const el = $('carro-resumo');
+    const fs = carLogs();
+    const iv = carIntervals();
+    const all = aggregate(iv);
+    const last = iv[iv.length - 1];
+    const rpk = all.km > 0 ? fs.filter((f) => iv.some((i) => i.id === f.id)).reduce((a, f) => a + f.total_brl, 0) / all.km : NaN;
+    const kpd = kmPerDay(fs);
+    const diff = last && iv.length > 1 ? last.kml / all.kml - 1 : NaN;
+    const badge = Number.isFinite(diff) && Math.abs(diff) >= 0.01
+      ? '<span class="cb2 ' + (diff > 0 ? 'up' : 'down') + '">' + (diff > 0 ? UP : DOWN) + Math.round(Math.abs(diff) * 100) + '% no último tanque</span>'
+      : '';
+    const bars = iv.slice(-8);
+    const min = bars.length ? Math.min(...bars.map((d) => d.kml)) * 0.75 : 0, max = bars.length ? Math.max(...bars.map((d) => d.kml)) : 1;
+    const g = aggregate(iv.filter((x) => x.fuel === 'gasolina')), e = aggregate(iv.filter((x) => x.fuel === 'etanol'));
+    const third = v.fuel_type === 'flex'
+      ? '<div><span>Etanol rende</span><b>' + (g.n && e.n ? Math.round((e.kml / g.kml) * 100) : 70) + '%</b>' + (g.n && e.n ? '' : '<em>estimado</em>') + '</div>'
+      : '<div><span>Gasto total</span><b>' + brl(fs.reduce((a, f) => a + f.total_brl, 0)).replace(/,\d\d$/, '') + '</b></div>';
+    const consumo =
+      '<a class="card cons2" href="#/indicadores"><div class="cons2-top"><div><span class="k">Consumo médio</span><span class="v">' + (iv.length ? fmt(all.kml, 1) : '–') + ' <small>km/l</small></span></div>' + badge + '</div>' +
+      (bars.length > 1
+        ? '<div class="cons2-bars" aria-hidden="true">' + bars.map((d, i) => '<i' + (i === bars.length - 1 ? ' class="on"' : '') + ' style="height:' + Math.round(25 + ((d.kml - min) / (max - min || 1)) * 75) + '%"></i>').join('') + '</div>'
+        : '<span class="hint">' + (fs.length ? 'Registre mais um tanque cheio para calcular o consumo.' : 'Toque em Abastecer para registrar o primeiro abastecimento.') + '</span>') +
+      '<div class="cons2-stats"><div><span>Custo por km</span><b>' + (Number.isFinite(rpk) ? brl(rpk) : '–') + '</b></div>' +
+      '<div><span>Por mês</span><b>' + (Number.isFinite(kpd) && kpd > 0 ? km(kpd * 30) + ' km' : '–') + '</b></div>' + third + '</div></a>';
+    // manutenção: os três próximos itens do plano, com anel do quanto do intervalo já passou
+    const plan = planOf(v);
+    let manut = '';
+    if (plan) {
+      const curKm = currentKmOf(v, fs, S.services);
+      const today = todayISO();
+      const states = sortStates(itemStates(plan, lastDoneByKey(v.id, S.services, S.items), curKm, today, kmPerDay(fs)))
+        .filter((x) => x.status === 'vencida' || x.status === 'proxima' || x.status === 'em_dia').slice(0, 3);
+      const ring = (pct: number | null, st: string) => '<svg class="ring3 ' + st + '" aria-hidden="true" width="40" height="40" viewBox="0 0 36 36"><circle cx="18" cy="18" r="14" class="tr"/><circle cx="18" cy="18" r="14" class="fg" stroke-dasharray="' + ((pct ?? 0) * 88).toFixed(1) + ' 88" transform="rotate(-90 18 18)"/></svg>';
+      manut = states.length
+        ? '<a class="card mt2" href="#/carro/manutencao">' + states.map((x) => {
+          const right = x.status === 'vencida' ? 'vencida' : x.remaining_km != null ? 'em ' + km(x.remaining_km) + ' km' : x.due_date ? monthYear(x.due_date) : '';
+          const done = x.last_km != null ? 'feito aos ' + km(x.last_km) + ' km' : x.last_date ? 'feito em ' + monthYear(x.last_date) : 'sem registro';
+          return '<span class="mt2-row">' + ring(progressOf(x, curKm, today), x.status) + '<span class="mid"><b>' + esc(x.item.description) + '</b><span>' + esc(done) + '</span></span><b class="r ' + x.status + '">' + esc(right) + '</b></span>';
+        }).join('') + '</a>'
+        : '<a class="card mn2" href="#/carro/manutencao"><span class="mn2-ic">' + ICON.wrench + '</span><span class="mn2-b"><b class="mn2-t">Manutenção</b><span class="mn2-sub">Registre a última revisão para ver as próximas trocas</span></span>' + ICON.chev + '</a>';
+    }
+    el.innerHTML = consumo +
+      (!fs.length && !S.services.some((s2) => s2.vehicle_id === v.id && !s2.deleted_at)
+        ? '<a class="card start-card" href="#/importar"><span class="ic gray">' + ICON.upload + '</span><span class="mid"><span class="a">Já tem histórico do ' + esc(v.name) + '?</span><span class="b">Planilha, PDF de manutenção com a sua IA ou o Claude.</span></span><span class="chev">' + ICON.chev + '</span></a>'
+        : '') +
+      manut +
+      '<div class="car2-links"><a href="#/indicadores">' + ICON.chart + 'Indicadores</a><a href="#/etanol"><b>%</b>Etanol × gasolina</a></div>';
+  }
+
   function renderResumo(v: Vehicle | undefined) {
     const el = $('carro-resumo');
+    renderHead2(v);
+    if (v && isNovo()) return renderResumoNovo(v);
     if (!v) {
       el.innerHTML = '<div class="card"><span class="b15">Nenhum carro cadastrado</span><p class="hint">Cadastre seu carro para acompanhar consumo, gastos e manutenção.</p><button type="button" class="btn primary" data-act="cars">Cadastrar carro</button></div>';
       return;

@@ -51,6 +51,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 [hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 h1, h2, h3, p { margin: 0; }
 
 /* ---------- estrutura ---------- */
@@ -227,6 +228,9 @@ select.inp { appearance: none; background-image: linear-gradient(45deg, transpar
 .fuel-seg label i { width: 10px; height: 10px; border-radius: 5px; }
 .fuel-seg input:checked + label { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(14, 17, 22, .12); }
 .fuel-seg input:focus-visible + label { outline: 2px solid var(--link); }
+.fuel-seg .fl { display: inline-flex; align-items: center; gap: 8px; }
+.total2, .km-row { display: contents; }
+#carro-head2:empty { display: none; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; }
 .switch-row .t { display: flex; flex-direction: column; }
 .switch-row .t span:first-child { font-size: 16px; font-weight: 500; }

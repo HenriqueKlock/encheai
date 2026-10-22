@@ -17,6 +17,7 @@ import { $, ago, brl, closeSheets, dm, esc, fmt, openSheet, onSheetClose, pl, to
 import { currentRoute, go, onShow } from '../router';
 import { addressSearch } from './busca-endereco';
 import { ICON } from '../icons';
+import { isNovo } from '../visual';
 
 type BaseKind = 'agora' | 'casa' | 'trabalho' | 'rota' | 'busca';
 const REC_LABEL: Record<BaseKind, string> = {
@@ -312,6 +313,19 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   function selo(r: StationRow['rel']) {
     return '<span class="rec-selo only-v2 ' + r.level + '">' + SHIELD + fmt(r.score, 1) + '</span>';
   }
+  /** Visual novo, fora do cartão clássico: placa do preço e selo de confiança sem as classes de alternância. */
+  function totemTag(o: { fuel: Fuel; price: PricePoint }) {
+    return '<span class="totem2"><em><i class="dot ' + (o.fuel === 'gasolina' ? 'gas' : 'eth') + '"></i>' + FUEL[o.fuel].toUpperCase() + '</em><b>' + fmt(o.price.price, 2) + '</b></span>';
+  }
+  function seloTag(r: StationRow['rel']) {
+    return '<span class="selo2 ' + r.level + '">' + SHIELD + fmt(r.score, 1) + '</span>';
+  }
+  /** Idade do preço em poucas palavras: "preço de hoje", "preço há 3 dias", "ANP 14/10". */
+  function priceShort(pp: PricePoint) {
+    if (pp.src === 'anp') return 'ANP ' + dm(pp.date);
+    const d = ago(pp.date, todayISO());
+    return 'preço ' + (d === 'hoje' || d === 'ontem' ? 'de ' + d : d);
+  }
 
   function recCard(kind: BaseKind, rec: Recommendation, b: Base) {
     const car = carInfo();
@@ -463,7 +477,16 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const fuelChips = car.fuels.length > 1
       ? chip('gasolina', filters.fuel === 'gasolina', '<i class="dot gas"></i>Gasolina') + chip('etanol', filters.fuel === 'etanol', '<i class="dot eth"></i>Etanol')
       : '';
-    $('p-filters').innerHTML = fuelChips + chip('ok', filters.ok, 'Só confiáveis') + chip('recent', filters.recent, 'Preço até 7 dias') + chip('bath', filters.bath, 'Banheiro bom');
+    let dist = '';
+    if (isNovo()) {
+      // visual novo: o raio (ou o desvio do caminho) vira um chip que alterna entre as opções
+      const rs = resolve(base);
+      const dm_ = rota()?.detour_m ?? 1000;
+      dist = 'base' in rs && rs.base.kind === 'rota'
+        ? '<button type="button" class="fchip dist" data-f="desvio" aria-label="Desvio máximo, toque para mudar">' + (dm_ < 1000 ? dm_ + ' m' : dm_ / 1000 + ' km') + ' de desvio</button>'
+        : '<button type="button" class="fchip dist" data-f="raio" aria-label="Distância, toque para mudar">' + radius + ' km</button>';
+    }
+    $('p-filters').innerHTML = fuelChips + chip('ok', filters.ok, 'Só confiáveis') + dist + chip('recent', filters.recent, 'Preço até 7 dias') + chip('bath', filters.bath, 'Banheiro bom');
   }
 
   function render() {
@@ -474,7 +497,9 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const right = 'base' in rs && rs.base.kind === 'rota'
       ? '<span class="mini-seg">' + DETOURS.map((d) => '<button type="button" data-detour="' + d + '" aria-pressed="' + (rota()?.detour_m === d) + '">' + (d < 1000 ? d + ' m' : d / 1000 + ' km') + '</button>').join('') + '</span>'
       : '<span class="mini-seg">' + RADII.map((r) => '<button type="button" data-radius="' + r + '" aria-pressed="' + (radius === r) + '">' + r + ' km</button>').join('') + '</span>';
-    $('p-where').innerHTML = '<span class="w">' + PIN + '<span>' + esc(rs.where) + '</span></span>' + right;
+    $('p-where').innerHTML = isNovo()
+      ? '<button type="button" class="w w2" data-local>' + PIN + '<span>' + esc(rs.where) + '</span><em>Trocar</em></button>'
+      : '<span class="w">' + PIN + '<span>' + esc(rs.where) + '</span></span>' + right;
     const body = $('p-body');
     if (!file) {
       $('p-map-wrap').hidden = true;
@@ -502,6 +527,11 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     }
     const sorted = sortRows(rows);
     const limit = showAll ? sorted.length : 20;
+    if (isNovo()) {
+      body.innerHTML = bodyNovo(rs.base, rows, rec, sorted, limit);
+      drawMap(rs, rows, rec);
+      return;
+    }
     let html = '';
     if (rec.best) html += recCard(base, rec, rs.base);
     else if (rows.length) html += noPriceCard(rows, rs.base);
@@ -516,6 +546,44 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     }
     body.innerHTML = html + sourcesNote();
     drawMap(rs, rows, rec);
+  }
+
+  /** Visual novo: a lista é a folha que sobe do mapa; sugerido e menor preço no topo, cartões de um preço. */
+  function bodyNovo(b: Base, rows: StationRow[], rec: Recommendation, sorted: StationRow[], limit: number) {
+    const active = filters.ok || filters.recent || filters.bath;
+    if (!rows.length) {
+      return '<div class="card center"><p class="hint">' + (active ? 'Nenhum posto passa nos filtros. Tire um filtro ou aumente a distância.' : 'Nenhum posto ' + (b.kind === 'rota' ? 'tão perto do caminho' : 'neste raio') + '. Aumente a distância.') + '</p></div>' + compareCard(base);
+    }
+    const bestId = rec.best?.s.c;
+    const cheapId = rec.cheapest && rec.cheapest.s.c !== bestId ? rec.cheapest.s.c : undefined;
+    const top = [bestId, cheapId].map((c) => (c ? rows.find((r) => r.s.c === c) : undefined)).filter((r): r is StationRow => !!r);
+    const list = [...top, ...sorted.filter((r) => r.s.c !== bestId && r.s.c !== cheapId)];
+    let html = rec.best ? '' : noPriceCard(rows, b);
+    html += '<div class="st2-list">' + list.slice(0, limit).map((r) => row2(r, b, rec, r.s.c === bestId, r.s.c === cheapId)).join('') +
+      (list.length > limit ? '<button type="button" class="list-more" data-act="all">Mostrar todos (' + list.length + ')</button>' : '') + '</div>';
+    if (rec.cheaperUnsafe) html += '<p class="rec-warn">' + ICON.warn + '<span>' + esc(nm(rec.cheaperUnsafe.s)) + ' sairia mais barato, mas ficou de fora: ' + (rec.cheaperUnsafe.rel.recentSerious ? 'autuação séria da ANP nos últimos 12 meses.' : 'confiabilidade baixa.') + '</span></p>';
+    html += compareCard(base);
+    return html + '<details class="how2"><summary>Como o app escolhe</summary>' + sourcesNote() + '</details>';
+  }
+  function row2(r: StationRow, b: Base, rec: Recommendation, isBest: boolean, isCheap: boolean) {
+    const o = isBest ? rec.best! : isCheap ? rec.cheapest! : r.best;
+    const lvl = r.rel.level;
+    const sl = lvl === 'ok'
+      ? '<span class="sl ok">' + SHIELD14 + fmt(r.rel.score, 1) + '</span>'
+      : '<span class="sl ' + lvl + '">' + fmt(r.rel.score, 1) + (lvl === 'atencao' ? ' atenção' : r.rel.recentSerious ? ' ocorrência' : ' evitar') + '</span>';
+    let extra = '';
+    if (isCheap) extra = weakPoints(rec.cheapest!, todayISO())[0] ?? 'nota menor que o sugerido';
+    else if (favorite()?.s.c === r.s.c) extra = 'seu posto';
+    else {
+      const y = yieldOf(r.live);
+      extra = y != null ? 'rende ' + Math.round((r.live!.yield!.r ?? y) * 100) + '%' : o ? priceShort(o.price) : '';
+    }
+    const tag = isBest ? '<span class="t2 best">Sugerido</span>' : isCheap ? '<span class="t2 cheap">Menor preço</span>' : '';
+    const price = o
+      ? '<span class="pr' + (isCheap ? ' cheap' : '') + (o.stale ? ' old' : '') + '"><i class="dot ' + (o.fuel === 'gasolina' ? 'gas' : 'eth') + '"></i>' + fmt(o.price.price, 2) + '</span>'
+      : '<span class="pr none">sem preço</span>';
+    return '<button type="button" class="st2' + (isBest ? ' best' : '') + '" data-posto="' + r.s.c + '"><span class="nm">' + tag + '<b>' + esc(nm(r.s)) + '</b></span>' + price +
+      '<span class="sb">' + sl + '<span>· ' + esc(distTxt(r, b)) + (extra ? ' · ' + esc(extra) : '') + '</span></span></button>';
   }
 
   function sourcesNote() {
@@ -562,10 +630,11 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const pts: [number, number][] = [];
     if (rs.base.kind === 'rota') {
       const line = rs.base.path.map((p) => [p.lat, p.lon] as [number, number]);
-      Lf.polyline(line, { color: '#1D4ED8', weight: 4, opacity: 0.7 }).addTo(layer!);
+      Lf.polyline(line, { color: isNovo() ? '#1E7A4E' : '#1D4ED8', weight: 4, opacity: 0.7 }).addTo(layer!);
       pts.push(...line);
     } else {
-      Lf.circleMarker([rs.center.lat, rs.center.lon], { radius: 7, color: '#FFFFFF', weight: 3, fillColor: '#1D4ED8', fillOpacity: 1 }).addTo(layer!);
+      if (isNovo()) Lf.circleMarker([rs.center.lat, rs.center.lon], { radius: 16, stroke: false, fillColor: '#1E7A4E', fillOpacity: 0.18, interactive: false }).addTo(layer!);
+      Lf.circleMarker([rs.center.lat, rs.center.lon], { radius: 7, color: '#FFFFFF', weight: 3, fillColor: isNovo() ? '#1E7A4E' : '#1D4ED8', fillOpacity: 1 }).addTo(layer!);
       pts.push([rs.center.lat, rs.center.lon]);
     }
     // principais opções ao redor; a sugerida fica em destaque, por cima das outras
@@ -639,6 +708,12 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     else if (f === 'ok') filters.ok = !filters.ok;
     else if (f === 'recent') filters.recent = !filters.recent;
     else if (f === 'bath') filters.bath = !filters.bath;
+    else if (f === 'raio') { radius = RADII[(RADII.indexOf(radius) + 1) % RADII.length]; mapKey = ''; return render(); }
+    else if (f === 'desvio') {
+      const cur = rota()?.detour_m ?? 1000;
+      if (S.places.rota) void setPlace('rota', { label: 'Casa → Trabalho', lat: null, lon: null, data: { ...S.places.rota.data, detour_m: DETOURS[(DETOURS.indexOf(cur) + 1) % DETOURS.length] } });
+      return;
+    }
     try { localStorage.setItem('postos_filtros', JSON.stringify(filters)); } catch { /* sem acesso */ }
     mapKey = '';
     render();
@@ -647,6 +722,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const el = e.target as HTMLElement;
     const r = el.closest<HTMLElement>('[data-radius]');
     const d = el.closest<HTMLElement>('[data-detour]');
+    if (el.closest('[data-local]')) return openLocal();
     if (r) { radius = Number(r.dataset.radius); render(); }
     if (d && S.places.rota) await setPlace('rota', { label: 'Casa → Trabalho', lat: null, lon: null, data: { ...S.places.rota.data, detour_m: Number(d.dataset.detour) } });
   });
@@ -773,6 +849,64 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       linkOffer(s) + '</div>';
 
     $('posto-title').textContent = nm(s);
+    if (isNovo()) {
+      // visual novo: cabeçalho verde com selo e as duas placas; rendimento num anel; "de onde vem a nota" em três números
+      const lvlTxt = rel.level === 'ok' ? 'confiável' : rel.level === 'atencao' ? 'atenção' : rel.recentSerious ? 'ocorrência recente' : 'evitar';
+      const who = (pp: PricePoint) => pp.src === 'rede'
+        ? (pp.seen ? 'informado · ' : pl(pp.n ?? 1, 'pessoa', 'pessoas') + ' · ') + ago(pp.date, today)
+        : pp.src === 'voce' ? (pp.seen ? 'você viu · ' : 'você pagou · ') + ago(pp.date, today) : 'ANP · ' + dm(pp.date);
+      const plate = (fuel: Fuel, pp: PricePoint | null) =>
+        '<div class="pl2' + (row.best && !row.best.stale && row.best.fuel === fuel ? ' win' : '') + '"><span class="k"><i class="dot ' + (fuel === 'gasolina' ? 'gas' : 'eth') + '"></i>' + FUEL[fuel].toUpperCase() + '</span>' +
+        '<span class="v">' + (pp ? fmt(pp.price, 2) : '–') + '</span><span class="d">' + (pp ? esc(who(pp)) + (ageDays(pp.date, today) > 30 ? ' (antigo)' : '') : 'sem preço recente') + '</span></div>';
+      const head =
+        '<div class="ps2-head"><div class="ps2-top"><button type="button" class="ps2-back" data-close aria-label="Voltar">' + BACK + '</button>' +
+        '<span class="ps2-selo ' + rel.level + '">' + SHIELD_OK + fmt(rel.score, 1) + ' ' + lvlTxt + '</span></div>' +
+        '<div class="ps2-name"><h2>' + esc(nm(s)) + '</h2><span>' + esc([s.e, dist].filter(Boolean).join(' · ')) + (s.pg === 'b' ? ' · local aproximado' : '') + '</span></div>' +
+        '<div class="ps2-plates">' + (car.model.fuels.includes('etanol') ? plate('etanol', row.eth) : '') + (car.model.fuels.includes('gasolina') ? plate('gasolina', row.gas) : '') + '</div></div>';
+      // anel do rendimento
+      let pctTxt = '–', frac = 0, ringTone = 'ok', yT = 'Rendimento sem medição', yS = 'Cada tanque cheio registrado aqui conta: o app compara com o consumo normal de cada pessoa.';
+      if (y?.pub && y.r != null) {
+        pctTxt = Math.round(y.r * 100) + '%';
+        frac = Math.max(0.05, Math.min(1, (y.r - 0.85) / 0.2));
+        ringTone = y.r >= 0.97 ? 'ok' : 'warn';
+        yT = y.r >= 1 ? 'Rende bem' : y.r < 0.97 ? 'Rende menos' : 'Rende normal';
+        yS = 'Comparado com o consumo normal de cada pessoa. ' + pl(y.tanks, 'tanque', 'tanques') + ', ' + pl(y.people, 'pessoa', 'pessoas') + '.';
+      } else if (y && y.people > 0) {
+        frac = Math.min(1, (Math.min(y.people, 5) / 5 + Math.min(y.tanks, 15) / 15) / 2);
+        ringTone = 'wait';
+        yT = 'Medindo o rendimento';
+        yS = Math.min(y.people, 5) + ' de 5 pessoas e ' + Math.min(y.tanks, 15) + ' de 15 tanques até agora.';
+      }
+      const ring = '<div class="ring2 ' + ringTone + '"><svg aria-hidden="true" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" class="tr"/><circle cx="18" cy="18" r="15" class="fg" stroke-dasharray="' + (frac * 94.2).toFixed(1) + ' 94.2" transform="rotate(-90 18 18)"/></svg><b>' + pctTxt + '</b></div>';
+      const yieldBox = '<div class="card y2">' + ring + '<div class="y2-t"><b>' + yT + '</b><span>' + yS + '</span></div></div>';
+      // de onde vem a nota
+      const tile = (k: string, v: string, d: string) => '<div class="tl2"><span>' + k + '</span><b>' + v + '</b><span>' + d + '</span></div>';
+      const share = (t: [number, number] | null | undefined, label: string) => (t ? { p: Math.round((t[0] / t[1]) * 100), label } : null);
+      const chips = [
+        share(rat?.bomba, 'bomba certa'),
+        share(rat?.atendimento, 'atendimento'),
+        dp ? { p: Math.round(((dp.normal + dp.melhor) / dp.n) * 100), label: 'carro sem problema' } : null,
+        share(rat?.banheiro, 'banheiro'),
+      ].filter((c): c is { p: number; label: string } => !!c);
+      const gSub = g ? g.count.toLocaleString('pt-BR') + ' notas' : gBlocked ? 'indisponível' : googleOn ? (gTried.has(s.c) && !gm ? 'não achado' : 'procurando…') : googleOn === false ? 'não configurado' : 'com a conta';
+      const whyBox =
+        '<div class="card why2"><b class="why2-t">De onde vem o ' + fmt(rel.score, 1) + '</b><div class="why2-tiles">' +
+        tile('ANP', fmt(rel.anp, 1), rel.infractions ? pl(rel.infractions, 'infração', 'infrações') : s.f ? 'sem infração' : 'sem registro') +
+        tile('Google', g ? fmt(g.rating, 1) : '–', gSub) +
+        tile('Quem abasteceu', stars ? fmt(stars.avg, 1) + '★' : '–', stars ? pl(stars.n, 'nota', 'notas') : rat?.n ? pl(rat.n, 'avaliação', 'avaliações') : 'sem notas') + '</div>' +
+        (chips.length ? '<div class="why2-chips">' + chips.map((c) => '<span class="' + (c.p >= 70 ? 'ok' : 'warn') + '">' + c.label + ' ' + c.p + '%</span>').join('') + '</div>' : '') +
+        (rel.netWarn ? '<p class="rec-warn">' + ICON.warn + '<span>' + (rel.netWarn === 'rendimento' ? 'Os tanques daqui rendem abaixo do normal para quem usa o app.' : rel.netWarn === 'falhas' ? 'Vários relatos de carro falhando depois de abastecer aqui.' : 'Muita gente disse que a bomba não marcou certo.') + '</span></p>' : '') +
+        (ev.length ? '<details class="more"><summary>Fiscalização da ANP (' + ev.length + ')<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary><ul class="ev-list">' + ev.slice(0, 6).map(([d, t, txt]) => '<li><span class="d">' + dm(d) + '/' + d.slice(2, 4) + '</span><span><b>' + EVENT_LABEL[t] + '</b>' + (txt ? ' · ' + esc(txt.replace(/^(Notificação|MRC)\s*-\s*(PR ?Comb\s*-\s*)?/i, '')) : '') + '</span></li>').join('') + '</ul></details>' : '') +
+        '</div>';
+      const me = mine.length || linkOffer(s)
+        ? '<div class="card"><span class="b15">Você aqui</span>' + (v ? '<span class="hint ' + v.tone + '">' + esc(v.text) + '</span>' : '') +
+          (mine.length ? '<span class="hint">' + pl(mine.length, 'abastecimento', 'abastecimentos') + ', o último em ' + dm(mine[0].date) + (u?.kml ? ' · ' + fmt(u.kml, 1) + ' km/l' : '') + '</span>' : '') + linkOffer(s) + '</div>'
+        : '';
+      $('posto-body').innerHTML = head + yieldBox + whyBox + reportBlock(s, row) +
+        (perKm ? '<p class="hint">' + perKm + '</p>' : '') + me +
+        '<div class="card"><div class="card-head"><span>Como chegar</span><span class="hint" id="ps-eta"></span></div><div class="ps-map" id="ps-map" role="img" aria-label="Mapa com o posto e o caminho até ele"></div><span class="hint" id="ps-map-note"></span></div>';
+      return;
+    }
     $('posto-body').innerHTML =
       (gm?.photo ? '<figure class="ps-photo" id="ps-photo"><div class="ph"></div><figcaption>Foto: ' + esc(gm.photo.author || 'Google') + ' · Google</figcaption></figure>' : '') +
       '<div class="ps-head"><h2>' + esc(nm(s)) + '</h2>' + (gm && gm.name !== s.n ? '<span class="hint">No cadastro da ANP: ' + esc(s.n) + '</span>' : '') +
@@ -1079,6 +1213,17 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       if (o && !o.stale && o.cost - b.cost > 0.5) favTxt = 'No seu posto de sempre sairia ≈ ' + brl(o.cost - b.cost) + ' a mais.';
     }
     const cheapTxt = cheapNote(rec, carInfo().model.kmTank, true);
+    if (isNovo()) {
+      // visual novo: o cartão inteiro abre a ficha; embaixo, a economia contra o outro combustível
+      const save = rec.bestOther && rec.bestOther.cost - b.cost >= 0.5 ? '<b>R$ ' + Math.round(rec.bestOther.cost - b.cost) + ' a menos</b> que ' + FUEL[rec.bestOther.fuel].toLowerCase() + ' no tanque' : favTxt ? esc(favTxt) : 'Ver a ficha do posto';
+      el.innerHTML =
+        '<button type="button" class="rec2" data-home-posto="' + b.s.c + '" data-base="' + kind + '">' +
+        '<span class="r2-top"><span class="l">' + where + ' · agora</span>' + seloTag(b.rel) + '</span>' +
+        '<span class="r2-mid"><span class="r2-n"><span class="t">' + esc(nm(b.s)) + '</span><span class="s">' + dist + ' · ' + priceShort(b.price) + '</span></span>' + totemTag(b) + '</span>' +
+        (cheapTxt ? '<span class="r2-cheap">' + esc(cheapTxt) + '</span>' : '') +
+        '<span class="r2-foot"><span>' + save + '</span>' + ICON.chev + '</span></button>';
+      return;
+    }
     const badges = netBadges(b.s.c ? network().get(b.s.c) ?? null : null, 2);
     el.innerHTML =
       '<div class="rec-card"><button type="button" class="rec-main" data-home-posto="' + b.s.c + '" data-base="' + kind + '"><span class="l">' + where + '</span>' + selo(b.rel) +
@@ -1138,4 +1283,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
 }
 export type PostosApi = ReturnType<typeof initPostos>;
 
+const BACK = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>';
+const SHIELD_OK = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/><path d="M8.8 12.2l2.2 2.2 4.4-4.6" stroke="var(--sh-in, #C3F25C)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const SHIELD14 ='<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/></svg>';
 const SHIELD = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/></svg>';

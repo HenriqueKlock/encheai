@@ -12,7 +12,7 @@ import { $, cap, esc, fmt, km, monthYear, pl, todayISO } from '../ui';
 import { currentRoute, onShow } from '../router';
 import { ICON } from '../icons';
 import { AFTER_OPTIONS, pendingAfter, type AfterEffect } from '../depois';
-import { DROP, dismissVisualNotice, setVisual, showVisualNotice } from '../visual';
+import { DROP, dismissVisualNotice, isNovo, setVisual, showVisualNotice } from '../visual';
 import { toast } from '../ui';
 
 export function initInicio(opts: { signedIn: () => boolean; renderRec: () => void; answerAfter: (fillId: string, v: AfterEffect) => Promise<void> }) {
@@ -43,9 +43,56 @@ export function initInicio(opts: { signedIn: () => boolean; renderRec: () => voi
     renderPolicy();
     renderVisual();
     if (!v) return;
+    if (isNovo()) {
+      renderMes();
+      $('home-next').innerHTML = nextMaintenanceRow(v);
+      return;
+    }
     renderConsumo();
     renderInds();
     $('home-next').innerHTML = nextMaintenanceCard(v);
+  }
+
+  /* ---------- visual novo: dois blocos do mês e a manutenção numa linha ---------- */
+  function renderMes() {
+    const v = current()!;
+    const iv = carIntervals();
+    const all = aggregate(iv);
+    const today = todayISO();
+    const ind = computeIndicators({ vehicleId: v.id, logs: carLogs(), services: S.services, items: S.items, today });
+    const bars = iv.slice(-5);
+    const min = bars.length ? Math.min(...bars.map((d) => d.kml)) * 0.85 : 0;
+    const max = bars.length ? Math.max(...bars.map((d) => d.kml)) : 1;
+    const spark = bars.length > 1
+      ? '<span class="m2-bars" aria-hidden="true">' + bars.map((d, i) => '<i' + (i === bars.length - 1 ? ' class="on"' : '') + ' style="height:' + Math.round(30 + ((d.kml - min) / (max - min || 1)) * 70) + '%"></i>').join('') + '</span>'
+      : '<span class="m2-s">' + (carLogs().length ? 'falta um tanque cheio' : 'registre o 1º tanque') + '</span>';
+    const g = ind.gasto_mes, k = ind.km_mes;
+    const sub = [g.sub.startsWith('nada') ? '' : g.sub.replace(/abastecimentos?/, (m) => (m.endsWith('s') ? 'tanques' : 'tanque')), k.value !== '0 km' ? k.value : ''].filter(Boolean).join(' · ') || g.sub;
+    $('home-consumo').innerHTML =
+      '<div class="mes2">' +
+      '<a class="m2" href="#/carro"><span class="m2-k">Consumo</span><span class="m2-v">' + (iv.length ? fmt(all.kml, 1) : '–') + ' <small>km/l</small></span>' + spark + '</a>' +
+      '<a class="m2" href="#/indicadores"><span class="m2-k">Gasto em ' + esc(monthName(monthKey(today))) + '</span><span class="m2-v">' + esc(g.value.replace(/,\d\d$/, '')) + '</span><span class="m2-s">' + esc(sub) + '</span></a>' +
+      '</div>';
+  }
+
+  function nextMaintenanceRow(v: Vehicle): string {
+    const plan = planOf(v);
+    if (!plan) return '';
+    const fs = carLogs();
+    const curKm = currentKmOf(v, fs, S.services);
+    const today = todayISO();
+    const states = sortStates(itemStates(plan, lastDoneByKey(v.id, S.services, S.items), curKm, today, kmPerDay(fs)));
+    const first = states.find((s) => s.status === 'vencida' || s.status === 'proxima' || s.status === 'em_dia');
+    if (!first) {
+      return '<a class="mn2" href="#/carro/manutencao"><span class="mn2-ic">' + ICON.wrench + '</span><span class="mn2-b"><b class="mn2-t">Manutenção</b><span class="mn2-sub">Registre a última revisão para ver a próxima troca</span></span>' + ICON.chev + '</a>';
+    }
+    let left = '';
+    if (first.remaining_km != null) left = first.remaining_km > 0 ? 'em ' + km(first.remaining_km) + ' km' : 'passou ' + km(-first.remaining_km) + ' km';
+    else if (first.remaining_days != null) left = first.remaining_days > 0 ? 'em ' + pl(first.remaining_days, 'dia', 'dias') : 'venceu';
+    const pct = progressOf(first, curKm, today);
+    const name = (first.item.action === 'inspecionar' ? 'Inspeção: ' : 'Troca de ') + first.item.description.toLowerCase();
+    return '<a class="mn2 ' + first.status + '" href="#/carro/manutencao"><span class="mn2-ic">' + ICON.wrench + '</span><span class="mn2-b"><span class="mn2-r"><b>' + esc(cap(name)) + '</b><span>' + esc(left) + '</span></span>' +
+      (pct != null ? '<span class="mn2-bar" aria-hidden="true"><i style="width:' + Math.max(4, Math.round(pct * 100)) + '%"></i></span>' : '') + '</span></a>';
   }
 
   function renderConsumo() {
@@ -134,6 +181,13 @@ export function initInicio(opts: { signedIn: () => boolean; renderRec: () => voi
     if (!f) { el.innerHTML = ''; return; }
     const name = (f.station ?? 'posto').split(' · ')[0];
     const ago = Math.round((Date.parse(todayISO()) - Date.parse(f.date)) / 864e5);
+    if (isNovo()) {
+      el.innerHTML =
+        '<div class="card depois2"><div class="d2-h"><span class="t">Como o carro andou com o combustível do ' + esc(name) + '?</span>' +
+        '<button type="button" class="d2-x" data-home-dismiss="' + esc(f.id) + '" aria-label="Agora não">' + X + '</button></div>' +
+        '<div class="d2-opts">' + AFTER_OPTIONS.map(([v, t]) => '<button type="button" data-home-after="' + v + '" data-fill="' + esc(f.id) + '" aria-label="' + t + '">' + AFTER_ICON[v] + AFTER_2[v] + '</button>').join('') + '</div></div>';
+      return;
+    }
     el.innerHTML =
       '<div class="card depois-card"><span class="l">Depois de abastecer</span><span class="t">Como o carro andou com o combustível do ' + esc(name) + '?</span>' +
       '<span class="hint">Abastecido em ' + esc(f.date.slice(8, 10) + '/' + f.date.slice(5, 7)) + ' (' + ago + ' dias atrás). Ajuda a saber a qualidade do combustível de cada posto.</span>' +
@@ -208,3 +262,13 @@ export function initInicio(opts: { signedIn: () => boolean; renderRec: () => voi
   onShow('inicio', render);
   return { render };
 }
+
+const AFTER_2: Record<AfterEffect, string> = { normal: 'Normal', melhor: 'Melhor', falhou: 'Falhou', rendeu_menos: 'Rendeu −' };
+const ic = (d: string, color: string) => '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+const AFTER_ICON: Record<AfterEffect, string> = {
+  normal: ic('<path d="M5 12l5 5 9-10"/>', 'var(--link)'),
+  melhor: ic('<path d="M12 19V5M6 11l6-6 6 6"/>', 'var(--link)'),
+  falhou: ic('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/>', 'var(--bad-ink)'),
+  rendeu_menos: ic('<path d="M12 5v14M6 13l6 6 6-6"/>', 'var(--warn-icon)'),
+};
+const X = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';

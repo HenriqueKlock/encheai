@@ -10,14 +10,16 @@ export function resetLogin() {
 }
 
 /** Desenha o formulário de entrada dentro de `box` e liga os botões. `onDone` roda ao entrar pelo código. */
-export function renderLogin(box: HTMLElement, opts: { cta?: string; onDone?: () => void; compact?: boolean } = {}) {
+export function renderLogin(box: HTMLElement, opts: { cta?: string; onDone?: () => void; compact?: boolean; bare?: boolean } = {}) {
+  // bare: só o campo (rótulo apenas para leitores de tela) e o botão, como nas boas-vindas do visual novo
+  const emailLabel = opts.bare ? '<span class="sr">Seu e-mail</span>' : 'Seu e-mail';
   box.innerHTML = otpSent
     ? '<div class="login sent"><div class="t">Confira seu e-mail</div><div class="d">Enviamos um link de acesso para <b>' + esc(otpEmail) + '</b>. Abra o e-mail <b>neste aparelho</b> e toque no link: o app abre já conectado. No primeiro acesso ele vem como <b>confirmação de cadastro</b>: é o mesmo link. Pode levar um minuto e às vezes cai no spam.</div>' +
       '<label class="field">Se o e-mail trouxe um código, digite aqui<input class="inp sm" data-l="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>' +
       '<div class="err" data-l="err" hidden></div>' +
       '<div class="btn-row"><button type="button" class="btn" data-l="back">Trocar e-mail</button><button type="button" class="btn primary" data-l="go">Entrar com código</button></div></div>'
     : '<div class="login">' + (opts.compact ? '' : '<div class="t">Entrar</div><div class="d">Sem senha: você recebe um link de acesso no e-mail. Seus dados ficam na sua conta e aparecem em qualquer aparelho.</div>') +
-      '<label class="field">Seu e-mail<input class="inp sm" data-l="email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com" value="' + esc(otpEmail) + '"></label>' +
+      '<label class="field">' + emailLabel + '<input class="inp sm" data-l="email" type="email" inputmode="email" autocomplete="email" placeholder="' + (opts.bare ? 'seu@email.com' : 'voce@email.com') + '" value="' + esc(otpEmail) + '"></label>' +
       '<div class="err" data-l="err" hidden></div>' +
       '<button type="button" class="btn primary block" data-l="go">' + esc(opts.cta ?? 'Receber link de acesso') + '</button></div>';
 
