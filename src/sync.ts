@@ -454,6 +454,17 @@ async function syncPlaces() {
 
 /* ---------- Google Places (opcional: só funciona com a chave configurada no servidor) ---------- */
 export type GoogleMode = 'nearby' | 'posto' | 'address' | 'autocomplete' | 'details' | 'lugar';
+/** Chave do mapa do Google da ficha (Maps Embed API: grátis e sem limite). null = ainda não configurada. */
+let embedKey: Promise<string | null> | null = null;
+export function googleEmbedKey(): Promise<string | null> {
+  embedKey ??= (async () => {
+    if (!(await currentSession())) return null;
+    const { data, error } = await supabase.functions.invoke('postos-google', { body: { mode: 'mapa' } });
+    if (error) throw error;
+    return (data as { key?: string | null }).key ?? null;
+  })().catch(() => { embedKey = null; return null; });
+  return embedKey;
+}
 /** Nota e número de avaliações de um lugar do Google (chamada própria: é a que tem a faixa grátis menor). */
 export async function googleNota(id: string): Promise<{ rating: number | null; count: number } | null> {
   if (!(await currentSession())) return null;

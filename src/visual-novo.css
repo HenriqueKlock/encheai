@@ -265,6 +265,10 @@
 .v2 #posto-sheet .sheet-bar { display: none; }
 .v2 #posto-sheet .sheet-body { padding-top: 0; }
 .v2 #posto-body { gap: 12px; }
+.v2 #posto-gmap:not(:empty) { margin-top: 12px; }
+.ps-gmap { display: block; width: 100%; border: 0; }
+.gm-attr { font-family: Roboto, Arial, sans-serif; font-weight: 400; color: #5E5E5E; }
+.gp2-q { font-size: 14px; font-weight: 600; }
 .v2 #posto-sheet .sheet-foot { background: var(--bg); border-top-color: var(--line); }
 .v2 #posto-sheet .sheet-foot .btn { height: 56px; border-radius: 28px; font-size: 16px; font-weight: 700; }
 .v2 #posto-sheet .sheet-foot .btn:not(.primary) { background: var(--surface); border: 1.5px solid var(--field); }

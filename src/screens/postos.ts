@@ -7,7 +7,7 @@ import {
   type Recommendation, type Station, type StationLive, type StationRow, type StationsFile, type StationUse,
 } from '../postos';
 import { gps, loadStations, route, type FoundPlace, type Route } from '../lugares';
-import { currentSession, googleNota, googlePhoto, googlePlaces, googleReviews, setPlace, stationPlaces, votePlace, type GoogleReviews, type PlaceLinks, type Places } from '../sync';
+import { currentSession, googleEmbedKey, googleNota, googlePhoto, googlePlaces, googleReviews, setPlace, stationPlaces, votePlace, type GoogleReviews, type PlaceLinks, type Places } from '../sync';
 import { fetchNetwork, invalidateNetwork, network } from '../rede';
 import { plausible, reportPrices, reportedAsOwn } from '../precos';
 import { getMeta, setMeta, stamp, db, type FuelLog } from '../db';
@@ -89,16 +89,17 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       : googleOn === false ? 'não configurado'
       : gTried.has(c) ? (short ? 'não achado' : 'não encontrado')
       : googleOn ? (short ? 'sem nota' : 'sem nota no Google') : (short ? 'com a conta' : 'disponível com a conta conectada');
-  const nm = (s: Station) => gmatch.get(s.c)?.name || anpName(s);
-  let adjusted: Station[] | null = null;
+  /*
+   * Termos do Google Maps Platform: dados do Google (nome, nota, foto, ponto) não podem aparecer junto de um
+   * mapa que não é do Google nem ficar guardados (só o place_id). Por isso a lista, o mapa da aba Postos e o
+   * Início usam só os nossos dados (nome da ANP sem bandeira antiga, ponto da ANP); o Google aparece só na
+   * ficha do posto, junto do mapa do Google (Maps Embed, grátis), e fica só na memória enquanto o app está aberto.
+   */
+  const nm = (s: Station) => anpName(s);
   function stations(): Station[] {
-    if (!file) return [];
-    if (!gmatch.size) return file.postos;
-    if (!adjusted) adjusted = file.postos.map((s) => { const g = gmatch.get(s.c); return g ? { ...s, la: g.lat, lo: g.lon, pg: 'n' as const } : s; });
-    return adjusted;
+    return file ? file.postos : [];
   }
   function addMatches(m: Map<string, GoogleMatch>) {
-    if (m.size) adjusted = null;
     for (const [c, g] of m) {
       gmatch.set(c, g);
       if (g.rating != null) google.set(c, { rating: g.rating, count: g.count });
@@ -110,8 +111,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
    * Nota do Google: chamada própria (a faixa grátis dela é a menor), só quando a ficha abre, uma vez por dia
    * por posto. Não entra na confiabilidade nem no sugerido; aparece na ficha como informação.
    */
-  const N_KEY = 'google_notas_v1';
   type NCache = Record<string, { at: number; rating: number | null; count: number }>;
+  /** Só na memória (o Google não permite guardar a nota). */
   let ncache: NCache = {};
   let notaBlocked = '';
   const notaPending = new Set<string>();
@@ -132,9 +133,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     try {
       const d = await googleNota(gm.id);
       if (d) {
-        ncache = Object.fromEntries(Object.entries(ncache).filter(([, e]) => fresh(e.at)));
         ncache[gm.id] = { at: Date.now(), rating: d.rating, count: d.count };
-        await setMeta(N_KEY, ncache);
         applyNota(s.c, gm.id);
       }
     } catch (e) {
@@ -169,6 +168,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return out;
   }
   let googleOn: boolean | null = null;
+  const NEARBY_ON = false;
 
   async function ensureFile() {
     if (file) return file;
@@ -177,47 +177,26 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (file) {
       links = await stationPlaces();
       placeOf = links.place;
-      ncache = await getMeta<NCache>(N_KEY, {});
-      await restoreGoogle();
+      // versões anteriores guardavam dados do Google no aparelho: apaga
+      for (const k of ['google_cache_v2', 'google_cache_v3', 'google_notas_v1', 'google_fotos_v1']) void db.meta.delete(k);
     }
     return file;
   }
 
-  /*
-   * Cache do Google no aparelho só até o fim do dia: cada área (e cada posto procurado) é buscada uma vez por
-   * dia, e o que o Google devolveu não fica guardado de um dia para o outro (só o place_id pode ficar).
-   */
-  const G_KEY = 'google_cache_v3';
+  /* Respostas do Google: só na memória enquanto o app está aberto (e no máximo até o fim do dia). */
   const fresh = (at: number) => at >= new Date().setHours(0, 0, 0, 0);
   type GCache = Record<string, { at: number; places: GoogleStation[] }>;
-  let gcache: GCache | null = null;
+  const gcache: GCache = {};
   /** Busca por perto e por texto bloqueada (cota do app ou do Google); a nota pelo id e as fotos têm a própria. */
   let gBlocked = '';
   let lugarBlocked = false;
   let photoBlocked = false;
   async function gGet(key: string): Promise<GoogleStation[] | null> {
-    gcache ??= await getMeta<GCache>(G_KEY, {});
     const e = gcache[key];
     return e && fresh(e.at) ? e.places : null;
   }
   async function gPut(key: string, places: GoogleStation[]) {
-    gcache ??= await getMeta<GCache>(G_KEY, {});
     gcache[key] = { at: Date.now(), places };
-    const keys = Object.keys(gcache).filter((k) => fresh(gcache![k].at)).sort((a, b) => gcache![b].at - gcache![a].at);
-    gcache = Object.fromEntries(keys.slice(0, 80).map((k) => [k, gcache![k]]));
-    await setMeta(G_KEY, gcache);
-  }
-  /** Ao abrir o app, religa o que já foi buscado no Google (sem nova consulta). */
-  async function restoreGoogle() {
-    gcache ??= await getMeta<GCache>(G_KEY, {});
-    const all = Object.values(gcache).filter((e) => fresh(e.at)).flatMap((e) => e.places);
-    if (!all.length || !file) return;
-    googleOn = true;
-    const ids = new Set(all.map((g) => g.id));
-    void ids;
-    // casa só com postos perto de algum lugar do Google (rápido mesmo com 2 mil postos)
-    const near = file.postos.filter((s) => all.some((g) => Math.abs(g.lat - s.la) < 0.03 && Math.abs(g.lon - s.lo) < 0.03));
-    addMatches(linkPlaces(all, near));
   }
   async function gError(e: unknown, kind: 'busca' | 'lugar' | 'foto' = 'busca') {
     const res = (e as { context?: Response })?.context;
@@ -231,8 +210,13 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     } else console.warn('google', e);
   }
 
+  /**
+   * Busca por perto no Google: desligada. A lista e o mapa da aba Postos não mostram dados do Google (o mapa
+   * não é do Google); o posto é procurado no Google só quando a ficha abre. Fica aqui para quando o mapa
+   * da aba for do Google.
+   */
   async function fetchGoogle(center: LatLon, radiusKm: number) {
-    if (googleOn === false || gBlocked || !file) return;
+    if (!NEARBY_ON || googleOn === false || gBlocked || !file) return;
     const small = radiusKm <= 1.5;
     const step = small ? 0.01 : 0.02;
     const snap = { lat: Math.round(center.lat / step) * step, lon: Math.round(center.lon / step) * step };
@@ -768,7 +752,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   function searchBody(rs: Resolved, rec: Recommendation) {
     const found = searchRows(rs);
     const b: Base = 'base' in rs ? rs.base : { kind: 'ponto', at: here?.p ?? { lat: 0, lon: 0 }, radiusKm: 25 };
-    const g = gBlocked || googleOn === false ? '' : '<button type="button" class="list-more" data-act="gsearch">' + (found.length ? 'Não é nenhum desses? Procurar no Google' : 'Procurar “' + esc(query.trim()) + '” no Google') + '</button>';
+    const g = '';
     return (found.length
       ? '<div class="st2-list">' + found.map((r) => row2(r, b, rec, false, false)).join('') + '</div>'
       : '<div class="card center"><p class="hint">Nenhum posto com esse nome por perto. O nome na fachada pode ser diferente do cadastro: tente a rua ou o bairro.</p></div>') + g;
@@ -825,7 +809,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   function sourcesNote() {
     if (!file) return '';
     const w = file.fontes.lpc_semanas[0];
-    const g = gBlocked ? esc(gBlocked) + ' Os nomes já buscados hoje continuam valendo.' : googleOn === true ? 'Nomes e fotos do Google buscados uma vez por dia; a nota do Google aparece na ficha de cada posto.' : googleOn === false ? 'Google ainda não configurado.' : '';
+    const g = 'Nomes e pontos dos postos: cadastro da ANP. Nota, fotos e avaliações do Google aparecem na ficha de cada posto, com o mapa do Google.';
     return '<p class="foot-note">Preços: o que a rede pagou nos últimos 7 dias, os seus abastecimentos e a pesquisa semanal da ANP' + (w ? ' (mais recente: ' + dm(w[0]) + ' a ' + dm(w[1]) + ')' : '') + '. Sugerido: o menor custo para rodar (preço, combustível, desvio e rendimento medido), pesado pela confiabilidade (fiscalização da ANP nos últimos 5 anos, avaliações da rede e as suas) e pela idade do preço; o menor preço aparece à parte. ' + g + ' Distâncias aproximadas.</p>';
   }
 
@@ -1015,15 +999,42 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     shown = s;
     // a ligação mudou (correção, servidor) depois que este posto foi casado: esquece o lugar antigo
     const old = gmatch.get(s.c);
-    if (old && placeOf.has(s.c) && placeOf.get(s.c) !== old.id) { gmatch.delete(s.c); google.delete(s.c); adjusted = null; gTried.delete(s.c); }
+    if (old && placeOf.has(s.c) && placeOf.get(s.c) !== old.id) { gmatch.delete(s.c); google.delete(s.c); gTried.delete(s.c); }
     renderPosto(s);
     openSheet('posto-sheet');
-    const gm = gmatch.get(s.c);
-    if (!gm && googleOn !== false && !gTried.has(s.c)) lookupStation(s);
-    if (gm) void loadNota(s);
-    if (gm?.photo) showPhoto(gm.photo);
     fetchNetwork([s.c]).then((ch) => ch && shown?.c === s.c && renderPosto(s));
     setTimeout(() => showMap(s), 280);
+    // o Google só entra na ficha junto do mapa do Google (termos do Google): sem a chave do mapa, nada do Google
+    void googleEmbedKey().then((k) => {
+      const changed = gKey !== k;
+      gKey = k;
+      if (shown?.c !== s.c) return;
+      if (k) {
+        const gm = gmatch.get(s.c);
+        if (!gm && googleOn !== false && !gTried.has(s.c)) lookupStation(s);
+        if (gm) void loadNota(s);
+        if (gm?.photo) showPhoto(gm.photo);
+      }
+      if (changed) rerenderPosto(s);
+    });
+  }
+  /** Chave do mapa do Google da ficha; sem ela (undefined = carregando), a ficha não mostra nada do Google. */
+  let gKey: string | null | undefined;
+  const gOn = () => !!gKey;
+  /**
+   * Mapa do Google do posto (Maps Embed API, grátis e sem limite): o lugar pelo place_id ou o ponto da ANP.
+   * Fica fora do corpo da ficha (que é redesenhado várias vezes) para o mapa não recarregar a cada vez.
+   */
+  function gmapCard(s: Station) {
+    const box = $('posto-gmap');
+    if (!gOn() || shown?.c !== s.c) { box.innerHTML = ''; delete box.dataset.q; return; }
+    const pid = placeOf.get(s.c) || gmatch.get(s.c)?.id;
+    const q = pid ? 'place_id:' + pid : s.la.toFixed(6) + ',' + s.lo.toFixed(6);
+    if (box.dataset.q === q) return;
+    box.dataset.q = q;
+    box.innerHTML = '<div class="card"><div class="card-head"><span>Como chegar</span><span class="hint" id="ps-eta"></span></div>' +
+      '<iframe class="ps-map ps-gmap" id="ps-map" title="Mapa do Google com o posto" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" src="https://www.google.com/maps/embed/v1/place?key=' + encodeURIComponent(gKey!) + '&q=' + encodeURIComponent(q) + '&zoom=16&language=pt-BR&region=BR"></iframe>' +
+      '<span class="hint" id="ps-map-note"></span></div>';
   }
 
   function renderPosto(s: Station) {
@@ -1143,7 +1154,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         '<div class="ps2-head"><div class="ps2-top"><button type="button" class="ps2-back" data-close aria-label="Voltar">' + BACK + '</button>' +
         '<span class="ps2-selo ' + rel.level + '">' + SHIELD_OK + fmt(rel.score, 1) + ' ' + lvlTxt + '</span></div>' +
         '<div class="ps2-name"><h2>' + brandBadge(s.b, 30) + esc(nm(s)) + '</h2><span>' + esc([s.e, dist].filter(Boolean).join(' · ')) + (s.pg === 'b' ? ' · local aproximado' : '') + '</span></div>' +
-        photoFig(s) +
+        (gOn() ? photoFig(s) : '') +
         '<div class="ps2-plates">' + (car.model.fuels.includes('etanol') ? plate('etanol', row.eth) : '') + (car.model.fuels.includes('gasolina') ? plate('gasolina', row.gas) : '') + '</div></div>';
       // anel do rendimento
       let pctTxt = '–', frac = 0, ringTone = 'ok', yT = 'Rendimento sem medição', yS = 'Cada tanque cheio registrado aqui conta: o app compara com o consumo normal de cada pessoa.';
@@ -1175,11 +1186,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         '<div class="card why2"><b class="why2-t">De onde vem o ' + fmt(rel.score, 1) + '</b><div class="why2-tiles">' +
         tile('ANP', fmt(rel.anp, 1), rel.infractions ? pl(rel.infractions, 'infração', 'infrações') : s.f ? 'sem infração' : 'sem registro') +
         tile('Quem abasteceu', stars ? fmt(stars.avg, 1) + '★' : '–', stars ? pl(stars.n, 'nota', 'notas') : rat?.n ? pl(rat.n, 'avaliação', 'avaliações') : 'sem notas') + '</div>' +
-        // Google: informação à parte (não entra no número acima)
-        (gm
-          ? '<button type="button" class="g2line" data-grv aria-expanded="' + (reviewsOpen === s.c) + '"><span class="g2-k">No Google</span><b>' + (g ? fmt(g.rating, 1) + '★' : '–') + '</b><span class="g2-s">' + esc(g ? '(' + g.count.toLocaleString('pt-BR') + ')' : gStatus(s.c, true)) + '</span><span class="g2-go">Avaliações' + CHEV_S + '</span></button>'
-          : '<div class="g2line off"><span class="g2-k">No Google</span><b>–</b><span class="g2-s">' + esc(gStatus(s.c, true)) + '</span></div>') +
-        '<p class="g2-note">' + (gm && !g && notaBlocked && !notaNone.has(s.c) ? esc(notaBlocked) + ' ' : '') + 'A nota do Google é só informação: não entra no ' + fmt(rel.score, 1) + ' nem no sugerido.</p>' +
+
         (chips.length ? '<div class="why2-chips">' + chips.map((c) => '<span class="' + (c.p >= 70 ? 'ok' : 'warn') + '">' + c.label + ' ' + c.p + '%</span>').join('') + '</div>' : '') +
         (rel.netWarn ? '<p class="rec-warn">' + ICON.warn + '<span>' + (rel.netWarn === 'rendimento' ? 'Os tanques daqui rendem abaixo do normal para quem usa o app.' : rel.netWarn === 'falhas' ? 'Vários relatos de carro falhando depois de abastecer aqui.' : 'Muita gente disse que a bomba não marcou certo.') + '</span></p>' : '') +
         (ev.length ? '<details class="more"><summary>Fiscalização da ANP (' + ev.length + ')<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></summary><ul class="ev-list">' + ev.slice(0, 6).map(([d, t, txt]) => '<li><span class="d">' + dm(d) + '/' + d.slice(2, 4) + '</span><span><b>' + EVENT_LABEL[t] + '</b>' + (txt ? ' · ' + esc(txt.replace(/^(Notificação|MRC)\s*-\s*(PR ?Comb\s*-\s*)?/i, '')) : '') + '</span></li>').join('') + '</ul></details>' : '') +
@@ -1188,9 +1195,10 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         ? '<div class="card"><span class="b15">Você aqui</span>' + (v ? '<span class="hint ' + v.tone + '">' + esc(v.text) + '</span>' : '') +
           (mine.length ? '<span class="hint">' + pl(mine.length, 'abastecimento', 'abastecimentos') + ', o último em ' + dm(mine[0].date) + (u?.kml ? ' · ' + fmt(u.kml, 1) + ' km/l' : '') + '</span>' : '') + linkOffer(s) + '</div>'
         : '';
-      $('posto-body').innerHTML = head + yieldBox + whyBox + reviewsBox(s) + placeCard(s) +
+      $('posto-body').innerHTML = head + yieldBox + whyBox + placeCard(s, rel.score) + reviewsBox(s) +
         (perKm ? '<p class="hint">' + perKm + '</p>' : '') + me +
-        '<div class="card"><div class="card-head"><span>Como chegar</span><span class="hint" id="ps-eta"></span></div><div class="ps-map" id="ps-map" role="img" aria-label="Mapa com o posto e o caminho até ele"></div><span class="hint" id="ps-map-note"></span></div>';
+        (gOn() ? '' : '<div class="card"><div class="card-head"><span>Como chegar</span><span class="hint" id="ps-eta"></span></div><div class="ps-map" id="ps-map" role="img" aria-label="Mapa com o posto e o caminho até ele"></div><span class="hint" id="ps-map-note"></span></div>');
+      gmapCard(s);
       const ph = gmatch.get(s.c)?.photo;
       if (ph && photoUris.get(ph.name) === undefined) void showPhoto(ph);
       return;
@@ -1250,7 +1258,6 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         reviews.set(gm.id, d ?? 'erro');
         if (d) {
           ncache[gm.id] = { at: Date.now(), rating: d.rating, count: d.count };
-          await setMeta(N_KEY, ncache);
           applyNota(st.c, gm.id);
         }
       } catch (e) {
@@ -1354,26 +1361,14 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
 
   /** Link temporário da foto (do Google), só na memória; null = sem foto ou não carregou. */
   const photoUris = new Map<string, string | null>();
-  const P_KEY = 'google_fotos_v1';
   const photoLoading = new Set<string>();
   async function showPhoto(ph: { name: string }) {
     let uri = photoUris.get(ph.name);
-    if (uri === undefined) {
-      // o link da foto vale o dia (a faixa grátis de fotos é pequena): não busca de novo a cada ficha
-      const day = await getMeta<Record<string, { at: number; uri: string }>>(P_KEY, {});
-      const e = day[ph.name];
-      if (e && fresh(e.at)) { uri = e.uri; photoUris.set(ph.name, uri); }
-    }
     if (uri === undefined) {
       if (photoBlocked || photoLoading.has(ph.name)) return;
       photoLoading.add(ph.name);
       try {
         uri = await googlePhoto(ph.name);
-        if (uri) {
-          const day = Object.fromEntries(Object.entries(await getMeta<Record<string, { at: number; uri: string }>>(P_KEY, {})).filter(([, x]) => fresh(x.at)));
-          day[ph.name] = { at: Date.now(), uri };
-          await setMeta(P_KEY, day);
-        }
       } catch (e) {
         await gError(e, 'foto');
         uri = null;
@@ -1399,14 +1394,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       b.append(img);
       fig.querySelector('.ph')?.replaceWith(b);
     };
-    img.onerror = async () => {
-      // link vencido: esquece e não tenta de novo nesta sessão
-      photoUris.set(ph.name, null);
-      fig.remove();
-      const day = await getMeta<Record<string, { at: number; uri: string }>>(P_KEY, {});
-      delete day[ph.name];
-      await setMeta(P_KEY, day);
-    };
+    img.onerror = () => { photoUris.set(ph.name, null); fig.remove(); };
     img.src = uri;
   }
   /** Visual novo: foto do posto (do Google) logo abaixo do nome, com o crédito que o Google exige. */
@@ -1445,14 +1433,19 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   async function showMap(s: Station) {
     const el = document.getElementById('ps-map');
     if (!el || shown?.c !== s.c) return;
-    const Lf = await loadLeaflet();
+    // com o mapa do Google na ficha (iframe), aqui só calcula o tempo de carro (OSRM), sem desenhar
+    const google = el.tagName === 'IFRAME';
+    const Lf = google ? null : await loadLeaflet();
     map?.remove();
-    map = Lf.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: mouse(), zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
-    if (mouse()) Lf.control.zoom({ position: 'bottomright', zoomInTitle: 'Aproximar', zoomOutTitle: 'Afastar' }).addTo(map);
-    map.attributionControl.setPrefix(false);
-    Lf.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+    map = null;
     const dest: [number, number] = [s.la, s.lo];
-    Lf.circleMarker(dest, { radius: 9, color: '#FFFFFF', weight: 3, fillColor: '#C2410C', fillOpacity: 1 }).addTo(map).bindTooltip(nm(s), { direction: 'top', offset: [0, -8] });
+    if (Lf) {
+      map = Lf.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: mouse(), zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+      if (mouse()) Lf.control.zoom({ position: 'bottomright', zoomInTitle: 'Aproximar', zoomOutTitle: 'Afastar' }).addTo(map);
+      map.attributionControl.setPrefix(false);
+      Lf.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+      Lf.circleMarker(dest, { radius: 9, color: '#FFFFFF', weight: 3, fillColor: '#C2410C', fillOpacity: 1 }).addTo(map).bindTooltip(nm(s), { direction: 'top', offset: [0, -8] });
+    }
     const fresh = here && Date.now() - here.at < 15 * 60000 ? here.p : null;
     const rs = resolve(base);
     const fromBase = base === 'rota' ? place('casa') : base === 'viagem' && viagem ? { lat: viagem.r.from[0], lon: viagem.r.from[1] } : 'center' in rs ? rs.center : null;
@@ -1460,13 +1453,15 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const label = fresh ? 'de onde você está' : base === 'casa' || base === 'rota' ? 'de casa' : base === 'trabalho' ? 'do trabalho' : base === 'viagem' ? 'de onde você saiu' : 'do local escolhido';
     const eta = document.getElementById('ps-eta')!, note = document.getElementById('ps-map-note')!;
     if (!origin) {
-      map.setView(dest, 15);
+      map?.setView(dest, 15);
       note.innerHTML = 'Toque em <b>Como chegar</b> para navegar até aqui.';
       return;
     }
     const o: [number, number] = [origin.lat, origin.lon];
-    Lf.circleMarker(o, { radius: 7, color: '#FFFFFF', weight: 3, fillColor: '#1D4ED8', fillOpacity: 1 }).addTo(map);
-    map.fitBounds(Lf.latLngBounds([o, dest]).pad(0.25));
+    if (Lf && map) {
+      Lf.circleMarker(o, { radius: 7, color: '#FFFFFF', weight: 3, fillColor: '#1D4ED8', fillOpacity: 1 }).addTo(map);
+      map.fitBounds(Lf.latLngBounds([o, dest]).pad(0.25));
+    }
     const key = o.map((x) => x.toFixed(4)).join(',') + '>' + s.c;
     let r = routes.get(key);
     if (r === undefined) {
@@ -1478,20 +1473,24 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       }
       routes.set(key, r);
     }
-    if (!map || shown?.c !== s.c) return;
+    if (shown?.c !== s.c || (!google && !map)) return;
     if (!r) {
       eta.textContent = '';
       note.textContent = navigator.onLine === false ? 'Sem internet para calcular o caminho.' : 'Não consegui calcular o caminho agora.';
       return;
     }
-    const line = Lf.polyline(r.pts, { color: '#1D4ED8', weight: 5, opacity: 0.85 }).addTo(map);
-    map.fitBounds(line.getBounds().extend(dest).extend(o).pad(0.15));
+    if (Lf && map) {
+      const line = Lf.polyline(r.pts, { color: '#1D4ED8', weight: 5, opacity: 0.85 }).addTo(map);
+      map.fitBounds(line.getBounds().extend(dest).extend(o).pad(0.15));
+    }
     eta.textContent = '≈ ' + (r.min < 1 ? '1' : r.min) + ' min · ' + fmt(r.km, 1) + ' km';
     note.textContent = 'De carro, ' + label + ', sem contar trânsito.';
   }
   onSheetClose('posto-sheet', () => {
     map?.remove();
     map = null;
+    $('posto-gmap').innerHTML = '';
+    delete $('posto-gmap').dataset.q;
     shown = null;
   });
 
@@ -1569,11 +1568,17 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   }
   /* ---------- "É este o posto no Google?": a pessoa confirma ou corrige a ligação ---------- */
   /** Cartão na ficha: qual lugar do Google está ligado a este posto, com confirmar e corrigir. */
-  function placeCard(s: Station) {
-    if (googleOn === false) return '';
-    const gm = gmatch.get(s.c);
+  function placeCard(s: Station, score: number) {
     const pid = placeOf.get(s.c);
     const none = placeOf.has(s.c) && pid === null;
+    const link = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s.la.toFixed(6) + ',' + s.lo.toFixed(6)) + (pid ? '&query_place_id=' + encodeURIComponent(pid) : '');
+    const head = (extra = '') => '<div class="gp2-h"><span class="gm-attr">Google Maps</span>' + extra + '</div>';
+    if (!gOn()) {
+      // sem o mapa do Google na ficha, os termos não deixam mostrar dados do Google: só o link
+      return '<div class="card gp2">' + head() + '<a class="btn sm" href="' + esc(link) + '" target="_blank" rel="noopener">Ver nota e avaliações no Google Maps</a></div>';
+    }
+    const gm = gmatch.get(s.c);
+    const g = google.get(s.c);
     const mineV = links.mine.has(s.c) ? links.mine.get(s.c) : undefined;
     const confirmed = mineV !== undefined && (mineV === (gm?.id ?? null) || (none && mineV === null));
     const who = links.people.has(s.c) ? '<span class="gp2-tag">confirmado por quem usa o app</span>' : '';
@@ -1582,12 +1587,15 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       : none ? '<span class="hint">Marcado como fora do Google: o app não mostra nota do Google para ele.</span>'
       : gPending.has(s.c) ? '<span class="hint">Procurando no Google…</span>'
       : '<span class="hint">Ainda não achamos este posto no Google.</span>';
-    const anp = nm(s) !== s.n ? '<span class="hint">No cadastro da ANP: ' + esc(s.n) + '</span>' : '';
+    const nota = gm
+      ? '<button type="button" class="g2line" data-grv aria-expanded="' + (reviewsOpen === s.c) + '"><span class="g2-k">Nota</span><b>' + (g ? fmt(g.rating, 1) + '★' : '–') + '</b><span class="g2-s">' + esc(g ? '(' + g.count.toLocaleString('pt-BR') + ')' : gStatus(s.c, true)) + '</span><span class="g2-go">Avaliações' + CHEV_S + '</span></button>' +
+        '<p class="g2-note">' + (!g && notaBlocked && !notaNone.has(s.c) ? esc(notaBlocked) + ' ' : '') + 'A nota do Google não entra no ' + fmt(score, 1) + ' nem no sugerido.</p>'
+      : '';
     const acts = confirmed
       ? '<span class="gp2-ok">' + ICON.check + 'Você confirmou</span><button type="button" class="link-btn" data-gfix>Corrigir</button>'
-      : gm ? '<button type="button" class="btn sm" data-gok>É este</button><button type="button" class="btn sm" data-gfix>Não é este</button>'
+      : gm ? '<span class="gp2-q">É este o posto?</span><button type="button" class="btn sm" data-gok>Sim</button><button type="button" class="btn sm" data-gfix>Não</button>'
       : '<button type="button" class="btn sm" data-gfix>' + (none ? 'Achar no Google' : 'Procurar no Google') + '</button>';
-    return '<div class="card gp2"><div class="gp2-h"><span>Este posto no Google</span>' + who + '</div>' + what + anp + '<div class="gp2-acts">' + acts + '</div></div>';
+    return '<div class="card gp2">' + head(who) + what + nota + '<div class="gp2-acts">' + acts + '</div></div>';
   }
 
   let fixFor: string | null = null;
@@ -1599,7 +1607,6 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const add = (gs: GoogleStation[] | null | undefined) => { for (const g of gs ?? []) if (g?.id && Number.isFinite(g.lat)) fixCands.set(g.id, g); };
     const gm = gmatch.get(s.c);
     if (gm) fixCands.set(gm.id, { id: gm.id, name: gm.name, address: gm.address ?? '', lat: gm.lat, lon: gm.lon, rating: gm.rating, count: gm.count, photo: gm.photo });
-    gcache ??= await getMeta<GCache>(G_KEY, {});
     add(Object.values(gcache).filter((e) => fresh(e.at)).flatMap((e) => e.places).filter((g) => haversineKm({ lat: s.la, lon: s.lo }, g) < 0.6));
     fixErr = '';
     if (typed) {
@@ -1638,6 +1645,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       (fixErr ? '<p class="hint">' + esc(fixErr) + '</p>' : '') +
       (list.length ? '<div class="gfix-list">' + list.map(row).join('') + '</div>' : !fixLoading ? '<p class="hint">Nenhum posto do Google perto deste endereço.</p>' : '') +
       '<button type="button" class="btn block' + (placeOf.get(s.c) === null && placeOf.has(s.c) ? ' cur' : '') + '" data-pick="none">Nenhum desses: não está no Google</button>' +
+      '<p class="hint"><span class="gm-attr">Google Maps</span></p>' +
       '<p class="hint">Sua escolha vale na hora para você e passa a valer para todos quando outra pessoa escolher o mesmo. O app guarda só qual lugar do Google é este posto.</p>';
   }
   async function openFix(s: Station) {
@@ -1662,7 +1670,6 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (r.applied) links.people.add(s.c);
     gmatch.delete(s.c);
     google.delete(s.c);
-    adjusted = null;
     gTried.delete(s.c);
     if (reviewsOpen === s.c) reviewsOpen = null;
     if (cand) addMatches(new Map([[s.c, toMatch(cand)]]));

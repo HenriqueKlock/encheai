@@ -31,6 +31,12 @@ o rendimento medido do combustível e avaliações de um toque, além da fiscali
 - **Trazer histórico (`#/importar`):** planilha .csv/.xlsx sem IA (`src/planilha.ts`), resposta da IA da pessoa no formato `encheai-importacao-1` (`src/importacao.ts`, o mesmo arquivo roda na função `mcp`) e backup. Tudo passa por uma prévia que tira duplicados.
 - **Dados da ANP:** `pipeline/postos.py` roda no GitHub Actions (`dados.yml`, terça e sábado). Gera `postos-SC.json` na branch `dados`, que o deploy publica em `/dados/`.
 
+## Google (termos e custo zero)
+
+- Os termos do Google Maps Platform não deixam mostrar dados do Places (nome, nota, foto, avaliações, ponto) junto de um mapa que não é do Google, nem guardá-los (só o `place_id`). Por isso a lista, o mapa da aba Postos (OpenStreetMap) e o Início usam só nossos dados: nome da ANP sem bandeira antiga e ponto da ANP. A nota do Google não entra na confiabilidade nem no sugerido.
+- O Google aparece só na ficha do posto, com o mapa do Google (Maps Embed API) no lugar do OpenStreetMap: nome e endereço no Google, nota, foto e avaliações, e a confirmação "é este o posto?". Tudo fica só na memória enquanto o app está aberto.
+- Mapa da aba Postos em Google Maps (Maps JavaScript API) teria custo depois de 10 mil carregamentos por mês; fica no OpenStreetMap, que é grátis e sem limite.
+
 ## Visual
 
 - No computador (tela a partir de 960 px): navegação na lateral, Postos com a lista numa coluna ao lado do mapa e as folhas como janelas no centro. Com mouse, os mapas têm botões de zoom e a rodinha aproxima. Tudo no fim de `src/visual-novo.css` (e `desktop()` em `src/folha.ts`).
@@ -69,6 +75,7 @@ Conector MCP com o Supabase simulado: `npx -y deno@2 run --allow-env --allow-net
 
 1. Supabase › Authentication › URL Configuration: Site URL `https://henriqueklock.github.io/encheai/` e o mesmo em Redirect URLs.
 2. Supabase › Edge Functions › Secrets: `GOOGLE_MAPS_API_KEY`. A chave nunca passa pelo chat nem pelo repositório.
+   - `GOOGLE_EMBED_KEY`: outra chave, só para o mapa do Google na ficha do posto (Maps Embed API, grátis e sem limite). No Google Cloud: ativar a Maps Embed API, criar a chave com restrição de API (só Maps Embed API) e de site (`https://henriqueklock.github.io/*`). É uma chave de navegador (aparece no endereço do mapa), por isso a restrição; fica no segredo para não entrar no repositório. Sem ela, a ficha não mostra nada do Google, só o link para o Google Maps.
 3. GitHub › Settings › Pages: Source = GitHub Actions.
 4. Opcional: SMTP próprio (Resend ou Brevo) em Authentication › Emails, para passar do limite de e-mails de login.
 5. Relatos por e-mail: Supabase › Edge Functions › Secrets: `RESEND_API_KEY` e `RELATO_PARA` (e-mail que recebe). Com domínio verificado no Resend, também `RELATO_DE` (ex.: `Enche AI <nao-responda@seu-dominio>`). Sem eles, os relatos ficam só na tabela `feedback`.

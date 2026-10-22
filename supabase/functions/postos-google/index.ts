@@ -10,6 +10,9 @@
 //  - mode "lugar":   nome, endereço e foto de um posto já ligado ao Google (pelo place_id; sem nota: SKU Pro);
 //  - mode "avaliacoes": até 5 avaliações do Google (as que ele escolhe), com data, e o link para ver todas
 //    no Google Maps. Só quando a pessoa toca na nota; nada disso é guardado;
+//  - mode "mapa":    a chave do mapa do Google na ficha (Maps Embed API, grátis e sem limite). É uma chave de
+//    navegador, que aparece no mapa de qualquer jeito; fica no segredo GOOGLE_EMBED_KEY para não ir para o
+//    repositório, restrita no Google Cloud à Maps Embed API e ao endereço do app;
 //  - mode "autocomplete" + "details": sugestões enquanto a pessoa digita o endereço (Places Autocomplete,
 //    com token de sessão: as sugestões e o detalhe escolhido contam como uma sessão no Google).
 // A chave fica no segredo GOOGLE_MAPS_API_KEY; sem ela, devolve { configured: false }.
@@ -162,6 +165,10 @@ Deno.serve(async (req) => {
     return json(400, { error: 'Corpo inválido.' });
   }
   const mode = b.mode ?? 'nearby';
+  if (mode === 'mapa') {
+    const k = Deno.env.get('GOOGLE_EMBED_KEY') ?? '';
+    return json(200, { configured: !!k, key: k || null });
+  }
   const lat = Number(b.lat), lon = Number(b.lon);
   const hasPoint = Number.isFinite(lat) && Number.isFinite(lon) && inBrazil(lat, lon);
 

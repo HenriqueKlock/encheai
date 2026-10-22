@@ -190,7 +190,7 @@
     <h2>Serviços de fora (alguns fora do Brasil)</h2>
     <ul>
       <li><b>Supabase</b> (banco, login e funções do servidor): servidores em São Paulo.</li>
-      <li><b>Google</b> (EUA): notas, fotos, avaliações e endereços de postos. A busca sai do nosso servidor, sem a sua conta; vai o texto buscado e a região. Nomes e fotos ficam no seu aparelho só até o fim do dia; a nota aparece na ficha do posto e as avaliações só quando você toca nela, e nada disso fica guardado; do Google guardamos só o identificador de cada posto.</li>
+      <li><b>Google</b> (EUA): notas, fotos, avaliações e endereços de postos. A busca sai do nosso servidor, sem a sua conta; vai o texto buscado e a região. Nome, nota, fotos e avaliações do Google aparecem só na ficha do posto, junto do mapa do Google, e não ficam guardados (nem no aparelho); do Google guardamos só o identificador de cada posto. O mapa do Google da ficha recebe o posto mostrado e o seu endereço de internet, não a sua localização.</li>
       <li><b>OpenStreetMap, Photon e OSRM</b> (Europa): mapas, busca de endereço e cálculo do caminho. O cálculo do caminho recebe o ponto de partida (onde você está ou casa) e o posto; o mapa recebe o seu endereço de internet ao baixar as imagens. Nada disso é guardado por nós.</li>
       <li><b>Resend</b> (EUA): entrega o e-mail dos relatos, com o texto e o seu e-mail.</li>
       <li><b>Serviço de notificações do seu navegador</b> (Google, Apple ou Mozilla): entrega o lembrete, sem conteúdo.</li>
@@ -322,7 +322,7 @@
     <h2 id="posto-title">Posto</h2>
     <span></span>
   </div>
-  <div class="sheet-body"><div class="stack" id="posto-body"></div></div>
+  <div class="sheet-body"><div class="stack" id="posto-body"></div><div class="stack" id="posto-gmap"></div></div>
   <div class="sheet-foot"><div class="btn-row"><button type="button" class="btn" id="posto-route">Como chegar</button><button type="button" class="btn primary" id="posto-fill">Abastecer aqui</button></div></div>
 </div>
 
