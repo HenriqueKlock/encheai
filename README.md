@@ -30,7 +30,7 @@ o rendimento medido do combustível e avaliações de um toque, além da fiscali
     - `lembretes`: `GET …/chave` devolve a chave pública VAPID; `POST` envia os lembretes devidos e só aceita o segredo que o banco manda. A notificação não leva conteúdo; o texto é fixo no `public/push-sw.js`.
     - `mcp`: conector para o Claude (MCP por HTTP). Login pelo OAuth 2.1 do Supabase; ferramentas para listar carros, ver histórico, conferir e importar. Apps conectados (token com `client_id`) só leem carros e histórico e acrescentam registros; políticas restritivas no banco garantem isso.
 - **Trazer histórico (`#/importar`):** planilha .csv/.xlsx sem IA (`src/planilha.ts`), resposta da IA da pessoa no formato `encheai-importacao-1` (`src/importacao.ts`, o mesmo arquivo roda na função `mcp`) e backup. Tudo passa por uma prévia que tira duplicados.
-- **Dados da ANP:** `pipeline/postos.py` roda no GitHub Actions (`dados.yml`, terça e sábado). Gera `postos-SC.json` na branch `dados`, que o deploy publica em `/dados/`.
+- **Dados da ANP:** `pipeline/postos.py` roda no GitHub Actions (`dados.yml`, terça e sábado). Gera `postos-SC.json` na branch `dados`, que o deploy publica em `/dados/`. Também busca os postos de SC no OpenStreetMap (Overpass, licença ODbL: pode guardar citando "© colaboradores do OpenStreetMap") e liga cada um ao CNPJ por endereço, nome, bandeira e distância: o nome na fachada vai no campo `o` e o ponto exato substitui o aproximado. Redes com vários postos perto só são ligadas com o endereço completo; nome que só repete a bandeira não é usado. No app, o nome confirmado pelas pessoas vale mais que o do OpenStreetMap, que vale mais que o da ANP. `--osm relatorio` só grava `osm-relatorio-SC.json` para conferir.
 
 ## Google (termos e custo zero)
 

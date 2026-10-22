@@ -627,7 +627,7 @@ def main():
     ap.add_argument('--lpc', nargs='*', help='planilhas LPC locais (testes)')
     ap.add_argument('--fisc', help='planilha local da fiscalização (testes)')
     ap.add_argument('--sem-geo', action='store_true', help='não consulta o Nominatim (testes)')
-    ap.add_argument('--osm', default='relatorio', choices=['usar', 'relatorio', 'nao'],
+    ap.add_argument('--osm', default='usar', choices=['usar', 'relatorio', 'nao'],
                     help='OpenStreetMap: usar (nome e ponto no arquivo), relatorio (só um relatório para conferir) ou nao')
     ap.add_argument('--osm-arquivo', help='postos do OpenStreetMap em arquivo local (testes)')
     ap.add_argument('--hoje', default=None)
