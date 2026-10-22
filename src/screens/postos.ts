@@ -21,10 +21,10 @@ import { isNovo } from '../visual';
 import { initFolha } from '../folha';
 import { brandBadge, isBranca as isBrancaB } from '../bandeira';
 
-type BaseKind = 'agora' | 'casa' | 'trabalho' | 'rota' | 'busca';
+type BaseKind = 'agora' | 'casa' | 'trabalho' | 'rota' | 'busca' | 'viagem';
 const REC_LABEL: Record<BaseKind, string> = {
   agora: 'Melhor opção perto de você', casa: 'Melhor opção perto de casa', trabalho: 'Melhor opção perto do trabalho',
-  rota: 'Melhor opção no seu caminho', busca: 'Melhor opção perto do local escolhido',
+  rota: 'Melhor opção no seu caminho', busca: 'Melhor opção perto do local escolhido', viagem: 'Melhor opção no caminho até o destino',
 };
 const FUEL: Record<Fuel, string> = { gasolina: 'Gasolina', etanol: 'Etanol' };
 const RADII = [2, 5, 10, 20, 40];
@@ -273,7 +273,34 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return p && !p.deleted_at && p.lat != null && p.lon != null ? { lat: p.lat, lon: p.lon, label: p.label ?? '' } : null;
   }
 
-  type Resolved = { base: Base; where: string; center: LatLon } | { need: 'gps' | 'casa' | 'trabalho' | 'rota'; where: string };
+  /*
+   * Caminho até um destino: sai de onde a pessoa está agora até um endereço escolhido e mostra os postos
+   * no caminho. Fica só na memória do app (o destino não é guardado nem vai para a conta).
+   */
+  let viagem: { label: string; r: Route } | null = null;
+  let viagemDetour = 1000;
+  let tracing = false;
+  const detourM = () => (base === 'viagem' ? viagemDetour : rota()?.detour_m ?? 1000);
+  async function startTrip(p: FoundPlace) {
+    base = 'viagem';
+    kindChosen = true;
+    showAll = false;
+    tracing = true;
+    render();
+    try {
+      const from = here && Date.now() - here.at < 10 * 60000 ? here.p : await gps();
+      here = { p: from, at: Date.now() };
+      viagem = { label: p.label, r: await route(from, p) };
+      mapKey = '';
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      tracing = false;
+      render();
+    }
+  }
+
+  type Resolved = { base: Base; where: string; center: LatLon } | { need: 'gps' | 'casa' | 'trabalho' | 'rota' | 'viagem'; where: string };
   function resolve(kind: BaseKind): Resolved {
     if (kind === 'agora') {
       if (!here) return { need: 'gps', where: 'Onde você está agora' };
@@ -287,6 +314,11 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (kind === 'busca') {
       if (!other) return { need: 'gps', where: 'Escolha um local' };
       return { base: { kind: 'ponto', at: other, radiusKm: radius }, where: other.label, center: other };
+    }
+    if (kind === 'viagem') {
+      if (!viagem) return { need: 'viagem', where: 'Caminho até um destino' };
+      const path = viagem.r.pts.map(([lat, lon]) => ({ lat, lon }));
+      return { base: { kind: 'rota', path, detourKm: viagemDetour / 1000, roads: viagem.r.roads }, where: 'Até ' + viagem.label + ' · ' + fmt(viagem.r.km, 1) + ' km', center: path[Math.floor(path.length / 2)] };
     }
     const r = rota();
     if (!r || !r.on || r.pts.length < 2) return { need: 'rota', where: 'No caminho casa → trabalho' };
@@ -521,6 +553,11 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   function needCard(need: string) {
     if (need === 'gps')
       return '<div class="card center"><p class="hint">' + (locating ? 'Pegando sua localização…' : 'Use a localização do celular ou escolha um endereço.') + '</p><div class="btn-row"><button type="button" class="btn primary" data-act="gps"' + (locating ? ' disabled' : '') + '>' + TARGET + 'Onde estou</button><button type="button" class="btn" data-act="outro">Outro local</button></div></div>';
+    if (need === 'viagem' || need === 'rota')
+      return '<div class="card center"><p class="hint">' + (tracing ? 'Traçando o caminho de onde você está até o destino…' : need === 'viagem'
+        ? 'Escolha para onde vai: o app traça o caminho de onde você está até lá e mostra os postos no caminho.'
+        : 'Escolha um destino para ver os postos no caminho de onde você está até lá, ou cadastre casa e trabalho para o caminho de todo dia.') + '</p>' +
+        '<div class="btn-row"><button type="button" class="btn primary" data-act="destino"' + (tracing ? ' disabled' : '') + '>' + PIN + 'Escolher destino</button>' + (need === 'rota' ? '<a class="btn" href="#/locais">Casa e trabalho</a>' : '') + '</div></div>';
     const txt = need === 'rota'
       ? 'Cadastre casa e trabalho e ligue “Postos no caminho” para ver os postos do seu trajeto.'
       : 'Cadastre ' + (need === 'casa' ? 'o endereço de casa' : 'o endereço do trabalho') + ' para comparar os postos de lá.';
@@ -600,7 +637,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (isNovo()) {
       // visual novo: o raio (ou o desvio do caminho) vira um chip que alterna entre as opções
       const rs = resolve(base);
-      const dm_ = rota()?.detour_m ?? 1000;
+      const dm_ = detourM();
       dist = 'base' in rs && rs.base.kind === 'rota'
         ? '<button type="button" class="fchip dist" data-f="desvio" aria-label="Desvio máximo, toque para mudar">' + (dm_ < 1000 ? dm_ + ' m' : dm_ / 1000 + ' km') + ' de desvio</button>'
         : '<button type="button" class="fchip dist" data-f="raio" aria-label="Distância, toque para mudar">' + radius + ' km</button>';
@@ -611,11 +648,11 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
 
   function render() {
     if (currentRoute().view !== 'postos') return;
-    document.querySelectorAll<HTMLElement>('#p-base button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.base === base)));
+    document.querySelectorAll<HTMLElement>('#p-base button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.base === base || (b.dataset.base === 'rota' && base === 'viagem'))));
     renderFilters();
     const rs = resolve(base);
     const right = 'base' in rs && rs.base.kind === 'rota'
-      ? '<span class="mini-seg">' + DETOURS.map((d) => '<button type="button" data-detour="' + d + '" aria-pressed="' + (rota()?.detour_m === d) + '">' + (d < 1000 ? d + ' m' : d / 1000 + ' km') + '</button>').join('') + '</span>'
+      ? '<span class="mini-seg">' + DETOURS.map((d) => '<button type="button" data-detour="' + d + '" aria-pressed="' + (detourM() === d) + '">' + (d < 1000 ? d + ' m' : d / 1000 + ' km') + '</button>').join('') + '</span>'
       : '<span class="mini-seg">' + RADII.map((r) => '<button type="button" data-radius="' + r + '" aria-pressed="' + (radius === r) + '">' + r + ' km</button>').join('') + '</span>';
     if (isNovo() && searching) {
       // o campo não é redesenhado enquanto a pessoa digita
@@ -904,9 +941,12 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-base]');
     if (!b) return;
     base = b.dataset.base as BaseKind;
+    // "Caminho": o destino escolhido agora vale antes do caminho casa → trabalho; sem nenhum, pede o destino
+    if (base === 'rota' && (viagem || !(rota()?.on && (rota()?.pts.length ?? 0) > 1))) base = 'viagem';
     showAll = false;
     if (base === 'agora' && !here) return locate();
     render();
+    if (base === 'viagem' && !viagem && !tracing) openLocal(true);
   });
   $('p-filters').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-f]');
@@ -925,7 +965,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     }
     else if (f === 'raio') { radius = RADII[(RADII.indexOf(radius) + 1) % RADII.length]; mapKey = ''; return render(); }
     else if (f === 'desvio') {
-      const cur = rota()?.detour_m ?? 1000;
+      const cur = detourM();
+      if (base === 'viagem') { viagemDetour = DETOURS[(DETOURS.indexOf(cur) + 1) % DETOURS.length]; mapKey = ''; return render(); }
       if (S.places.rota) void setPlace('rota', { label: 'Casa → Trabalho', lat: null, lon: null, data: { ...S.places.rota.data, detour_m: DETOURS[(DETOURS.indexOf(cur) + 1) % DETOURS.length] } });
       return;
     }
@@ -940,6 +981,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (el.closest('[data-local]')) return openLocal();
     if (el.closest('[data-q-close]')) { searching = false; query = ''; return render(); }
     if (r) { radius = Number(r.dataset.radius); render(); }
+    if (d && base === 'viagem') { viagemDetour = Number(d.dataset.detour); mapKey = ''; return render(); }
     if (d && S.places.rota) await setPlace('rota', { label: 'Casa → Trabalho', lat: null, lon: null, data: { ...S.places.rota.data, detour_m: Number(d.dataset.detour) } });
   });
   $('p-where').addEventListener('input', (e) => {
@@ -956,6 +998,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const cmp = el.closest<HTMLElement>('.cmp-cell[data-base]')?.dataset.base;
     if (act === 'gps') return locate();
     if (act === 'outro') return openLocal();
+    if (act === 'destino') return openLocal(true);
     if (act === 'all') { showAll = true; return render(); }
     if (act === 'retry') { loadFailed = false; render(); ensureFile().then(render); return; }
     if (cmp) { base = cmp as BaseKind; return render(); }
@@ -1412,9 +1455,9 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     Lf.circleMarker(dest, { radius: 9, color: '#FFFFFF', weight: 3, fillColor: '#C2410C', fillOpacity: 1 }).addTo(map).bindTooltip(nm(s), { direction: 'top', offset: [0, -8] });
     const fresh = here && Date.now() - here.at < 15 * 60000 ? here.p : null;
     const rs = resolve(base);
-    const fromBase = base === 'rota' ? place('casa') : 'center' in rs ? rs.center : null;
+    const fromBase = base === 'rota' ? place('casa') : base === 'viagem' && viagem ? { lat: viagem.r.from[0], lon: viagem.r.from[1] } : 'center' in rs ? rs.center : null;
     const origin = fresh ?? fromBase;
-    const label = fresh ? 'de onde você está' : base === 'casa' || base === 'rota' ? 'de casa' : base === 'trabalho' ? 'do trabalho' : 'do local escolhido';
+    const label = fresh ? 'de onde você está' : base === 'casa' || base === 'rota' ? 'de casa' : base === 'trabalho' ? 'do trabalho' : base === 'viagem' ? 'de onde você saiu' : 'do local escolhido';
     const eta = document.getElementById('ps-eta')!, note = document.getElementById('ps-map-note')!;
     if (!origin) {
       map.setView(dest, 15);
@@ -1687,10 +1730,12 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   });
 
   /* ---------- "Outro local" ---------- */
-  function openLocal() {
+  function openLocal(dest = false) {
     renderLocal();
     openSheet('local-sheet');
     search.clear();
+    destSearch.clear();
+    if (dest) setTimeout(() => { const i = $<HTMLInputElement>('local-dest'); i.scrollIntoView({ block: 'center' }); i.focus(); }, 280);
   }
   function renderLocal() {
     const r = rota();
@@ -1699,6 +1744,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       const p = place(k);
       if (p) saved.push('<button type="button" class="row nav" data-pick="' + k + '"><span class="ic gray">' + (k === 'casa' ? HOUSE : BAG) + '</span><span class="mid"><span class="a">' + (k === 'casa' ? 'Casa' : 'Trabalho') + '</span><span class="b">' + esc(p.label) + '</span></span><span class="chev">' + ICON.chev + '</span></button>');
     }
+    if (viagem) saved.push('<button type="button" class="row nav" data-pick="viagem"><span class="ic gray">' + PIN + '</span><span class="mid"><span class="a">Até ' + esc(viagem.label) + '</span><span class="b">Caminho de ' + fmt(viagem.r.km, 1) + ' km saindo de onde você estava</span></span><span class="chev">' + ICON.chev + '</span></button>');
     if (r?.on && r.pts.length > 1) saved.push('<button type="button" class="row nav" data-pick="rota"><span class="ic gray">' + PIN + '</span><span class="mid"><span class="a">No caminho casa → trabalho</span><span class="b">Desvio até ' + (r.detour_m < 1000 ? r.detour_m + ' m' : r.detour_m / 1000 + ' km') + '</span></span><span class="chev">' + ICON.chev + '</span></button>');
     $('local-saved').innerHTML = saved.join('') + '<button type="button" class="list-more" data-close-local>' + (saved.length ? 'Editar casa e trabalho' : 'Cadastrar casa e trabalho') + '</button>';
   }
@@ -1710,6 +1756,13 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       kindChosen = true;
       closeSheets(() => (currentRoute().view !== 'postos' ? go('postos') : render()));
     },
+  });
+  const destSearch = addressSearch($<HTMLInputElement>('local-dest'), $('local-dest-results'), {
+    near: () => here?.p ?? place('casa'),
+    onPick: (p) => closeSheets(() => {
+      if (currentRoute().view !== 'postos') go('postos');
+      void startTrip(p);
+    }),
   });
   $('local-gps').addEventListener('click', () => {
     base = 'agora';
