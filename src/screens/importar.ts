@@ -64,7 +64,7 @@ export function initImportar() {
           batchesCard() +
           '<div class="card"><span class="b15">Modelos de planilha</span><span class="hint">Preencha no Excel ou no Google Planilhas e importe aqui.</span>' +
           '<div class="btn-row"><button type="button" class="btn sm" data-tpl="abastecimentos">Abastecimentos</button><button type="button" class="btn sm" data-tpl="manutencoes">Manutenções</button></div></div>' +
-          '<p class="foot-note">Também aceita o backup do Enche Aí (.json). Nada é gravado antes de você conferir; registros que já existem no ' + esc(c.name) + ' ficam de fora.</p>'
+          '<p class="foot-note">Também aceita o backup do Enche AI (.json). Nada é gravado antes de você conferir; registros que já existem no ' + esc(c.name) + ' ficam de fora.</p>'
         );
       case 'ia':
         return (
@@ -80,11 +80,11 @@ export function initImportar() {
         return (
           '<div class="card steps">' +
           (logged ? '' : '<p class="rec-warn">' + ICON.warn + '<span>Entre na sua conta no Perfil antes: o Claude grava na sua conta.</span></p>') +
-          '<div class="stp"><b>1</b><div><span class="b15">Adicione o conector</span><span class="hint">No Claude: Configurações › Conectores › Adicionar conector personalizado. Nome: Enche Aí. Endereço:</span>' +
+          '<div class="stp"><b>1</b><div><span class="b15">Adicione o conector</span><span class="hint">No Claude: Configurações › Conectores › Adicionar conector personalizado. Nome: Enche AI. Endereço:</span>' +
           '<div class="copy-row"><code>' + esc(MCP_URL) + '</code><button type="button" class="btn sm" data-imp="copyurl">Copiar</button></div>' +
           '<span class="hint">Funciona no plano gratuito do Claude (1 conector personalizado). Adicione pelo site ou app do computador; depois ele aparece no celular também.</span></div></div>' +
-          '<div class="stp"><b>2</b><div><span class="b15">Conecte com a sua conta</span><span class="hint">O Claude abre o Enche Aí para você autorizar. Ele só acessa os seus carros e registros, e você pode desconectar quando quiser.</span></div></div>' +
-          '<div class="stp"><b>3</b><div><span class="b15">Peça no chat</span><span class="hint">Anexe as fotos das OS ou a planilha e escreva, por exemplo:</span><blockquote>Registre no Enche Aí o histórico destes arquivos no meu carro.</blockquote><span class="hint">O Claude mostra o que vai gravar e pede a sua confirmação. Os registros aparecem aqui na próxima sincronização.</span></div></div>' +
+          '<div class="stp"><b>2</b><div><span class="b15">Conecte com a sua conta</span><span class="hint">O Claude abre o Enche AI para você autorizar. Ele só acessa os seus carros e registros, e você pode desconectar quando quiser.</span></div></div>' +
+          '<div class="stp"><b>3</b><div><span class="b15">Peça no chat</span><span class="hint">Anexe as fotos das OS ou a planilha e escreva, por exemplo:</span><blockquote>Registre no Enche AI o histórico destes arquivos no meu carro.</blockquote><span class="hint">O Claude mostra o que vai gravar e pede a sua confirmação. Os registros aparecem aqui na próxima sincronização.</span></div></div>' +
           '</div>' + backBtn()
         );
       case 'colunas': {

@@ -47,7 +47,7 @@ export function initAutorizar() {
       return;
     }
     if (!(await currentSession())) {
-      box.innerHTML = '<div class="card"><span class="b15">Entre para continuar</span><span class="hint">O Claude pediu para se conectar à sua conta do Enche Aí. Entre com o mesmo e-mail que você usa no app; depois você confirma a conexão.</span><div id="aut-login"></div></div>';
+      box.innerHTML = '<div class="card"><span class="b15">Entre para continuar</span><span class="hint">O Claude pediu para se conectar à sua conta do Enche AI. Entre com o mesmo e-mail que você usa no app; depois você confirma a conexão.</span><div id="aut-login"></div></div>';
       renderLogin($('aut-login'), { compact: true, onDone: render });
       return;
     }
@@ -77,7 +77,7 @@ export function initAutorizar() {
     try { host = new URL(d.redirect_uri).host; } catch { /* sem endereço */ }
     box.innerHTML =
       '<div class="card aut-card"><span class="aut-ic">' + PLUG + '</span>' +
-      '<span class="t">' + esc(d.client.name || 'Um app') + ' quer acessar a sua conta do Enche Aí</span>' +
+      '<span class="t">' + esc(d.client.name || 'Um app') + ' quer acessar a sua conta do Enche AI</span>' +
       '<span class="hint">Conta: <b>' + esc(d.user.email) + '</b>' + (host ? ' · volta para ' + esc(host) : '') + '</span>' +
       '<ul class="aut-list">' +
       '<li>' + ICON.check + '<span>Ver seus carros, abastecimentos e manutenções</span></li>' +

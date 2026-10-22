@@ -1,11 +1,11 @@
-# Enche Aí
+# Enche AI
 
 Saiba em qual posto vale abastecer, medido por quem abastece lá. É um caderno do carro (consumo, gastos,
 manutenção) que funciona sem internet, ligado a uma rede de postos. A rede mostra o preço que os usuários pagaram,
 o rendimento medido do combustível e avaliações de um toque, além da fiscalização da ANP e das notas do Google.
 
 - App: https://henriqueklock.github.io/encheai/
-- Desenho do produto e telas: documento “Enche Aí — desenho do produto” (com a trilha de IA) e o canvas de design.
+- Desenho do produto e telas: documento “Enche AI — desenho do produto” (com a trilha de IA) e o canvas de design.
 - Nasceu como Caderneta do Carro; o app anterior continua em https://henriqueklock.github.io/caderneta-carro/.
 
 ## Como funciona
@@ -68,7 +68,7 @@ Conector MCP com o Supabase simulado: `npx -y deno@2 run --allow-env --allow-net
 2. Supabase › Edge Functions › Secrets: `GOOGLE_MAPS_API_KEY`. A chave nunca passa pelo chat nem pelo repositório.
 3. GitHub › Settings › Pages: Source = GitHub Actions.
 4. Opcional: SMTP próprio (Resend ou Brevo) em Authentication › Emails, para passar do limite de e-mails de login.
-5. Relatos por e-mail: Supabase › Edge Functions › Secrets: `RESEND_API_KEY` e `RELATO_PARA` (e-mail que recebe). Com domínio verificado no Resend, também `RELATO_DE` (ex.: `Enche Aí <nao-responda@seu-dominio>`). Sem eles, os relatos ficam só na tabela `feedback`.
+5. Relatos por e-mail: Supabase › Edge Functions › Secrets: `RESEND_API_KEY` e `RELATO_PARA` (e-mail que recebe). Com domínio verificado no Resend, também `RELATO_DE` (ex.: `Enche AI <nao-responda@seu-dominio>`). Sem eles, os relatos ficam só na tabela `feedback`.
 6. Conector do Claude: Supabase › Authentication › OAuth Server: ligar o servidor OAuth 2.1, Authorization Path `/autorizar` e permitir registro dinâmico de clientes. A tela de autorização é `#/autorizar` (com `autorizar/index.html` e `404.html` encaminhando o `authorization_id`).
 
 ## Próximas etapas

@@ -13,8 +13,8 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
       manifest: {
-        name: 'Enche Aí',
-        short_name: 'Enche Aí',
+        name: 'Enche AI',
+        short_name: 'Enche AI',
         description: 'Saiba em qual posto vale abastecer, medido por quem abastece lá.',
         lang: 'pt-BR',
         // identidade própria do app instalado (separada de instalações antigas e do app anterior)
@@ -23,8 +23,8 @@ export default defineConfig({
         scope: base,
         display: 'standalone',
         orientation: 'portrait',
-        background_color: '#0E1116',
-        theme_color: '#0E1116',
+        background_color: '#0E3B2E',
+        theme_color: '#0E3B2E',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },

@@ -79,7 +79,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
       : '<div class="card" id="p-login"></div>';
 
     const inst = canInstall() && !isStandalone()
-      ? '<div class="list-card"><button type="button" class="row simple" data-p="install"><span class="mid"><span class="a">Instalar o Enche Aí</span><span class="b">Abre direto da tela inicial, como um app</span></span><span></span><span class="chev">' + ICON.chev + '</span></button></div>'
+      ? '<div class="list-card"><button type="button" class="row simple" data-p="install"><span class="mid"><span class="a">Instalar o Enche AI</span><span class="b">Abre direto da tela inicial, como um app</span></span><span></span><span class="chev">' + ICON.chev + '</span></button></div>'
       : '';
     const nv = isNovo();
     const visual =
@@ -160,7 +160,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     if (p === 'sync') { await sync(); return render(); }
     if (p === 'out') { await disablePush(); push = null; await signOut(); toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
     if (p === 'export') return download();
-    if (p === 'install') { if (await install()) toast('Instalado! Procure o Enche Aí na tela inicial.'); return render(); }
+    if (p === 'install') { if (await install()) toast('Instalado! Procure o Enche AI na tela inicial.'); return render(); }
     if (p === 'delete') {
       $<HTMLInputElement>('del-confirm').value = '';
       $<HTMLButtonElement>('del-go').disabled = true;
