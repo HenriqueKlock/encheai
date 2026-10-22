@@ -7,6 +7,8 @@ import { $ } from '../ui';
 import { renderLogin } from './conta';
 
 const DONE = 'welcome_done';
+/** Quem passou pelas boas-vindas já viu a política atual: não precisa do aviso de atualização no Início. */
+const markPolicySeen = () => { try { localStorage.setItem('politica_vista', '2026-10-22'); } catch { /* sem acesso */ } };
 const CHOICE = 'consent_choice';
 
 export async function shouldWelcome(signedIn: boolean) {
@@ -37,7 +39,7 @@ export function showWelcome(opts: { legacyCount: number | null; onClose: () => v
     '</ul>' +
     (opts.legacyCount ? '<p class="legacy-note">Encontramos ' + opts.legacyCount + ' abastecimentos do app anterior neste celular. Depois de entrar, toque em “Trazer meus dados” no Início.</p>' : '') +
     '<div class="consent"><label><input type="checkbox" id="w-consent" checked>Contribuir com a rede, sem meu nome</label>' +
-    '<span>Seus abastecimentos com posto entram só em médias por posto, com volume mínimo: nunca quem, nunca o horário, nunca casa ou trabalho. Desmarque aqui ou desligue depois no Perfil. Para maiores de 18 anos.</span>' +
+    '<span>Seus abastecimentos com posto entram só em médias por posto, com volume mínimo: nunca quem, nunca o horário, nunca casa ou trabalho. Esses números agregados também podem ir para relatórios e parcerias. Desmarque aqui ou desligue depois no Perfil. Para maiores de 18 anos.</span>' +
     '<a href="#/privacidade" id="w-privacy">Ler a política de privacidade</a></div>' +
     '<div id="w-login"></div>' +
     '<button type="button" class="text-btn" id="w-skip">Usar sem conta por enquanto</button>' +
@@ -46,6 +48,7 @@ export function showWelcome(opts: { legacyCount: number | null; onClose: () => v
   const consent = $<HTMLInputElement>('w-consent');
   const remember = () => setMeta(CHOICE, consent.checked);
   remember();
+  markPolicySeen();
   consent.addEventListener('change', remember);
   renderLogin($('w-login'), { compact: true });
   $('w-privacy').addEventListener('click', () => close(false));

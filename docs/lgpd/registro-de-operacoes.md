@@ -12,6 +12,7 @@ Porte: agente de tratamento de pequeno porte (Resolução CD/ANPD nº 2/2022); s
 | Lembrete | endereço de push do navegador | quem liga | lembrar de avaliar | consentimento (ligar no Perfil) | Supabase | até desligar, sair da conta ou o navegador descartar | serviço de push do navegador (sem conteúdo) |
 | Relatos | texto, prints, e-mail | quem envia | suporte e melhoria | legítimo interesse | Supabase + e-mail (Resend) | até resolver, no máximo 1 ano | Resend (EUA) |
 | Busca de postos e endereços | texto buscado, região | usuários | notas, fotos e endereços | execução do serviço | não guardado (cache no aparelho 7 dias) | — | Google (EUA), Photon/OSM e OSRM (Europa) |
+| Estatísticas agregadas | médias e contagens por posto/região/período, mínimo 5 pessoas | usuários com "Contribuir" ligado | relatórios e licenciamento (inclusive pago), melhoria do app | legítimo interesse; agregado anonimizado | Supabase | — | postos, distribuidoras, parceiros, pesquisas (só agregados) |
 | Segurança | contadores de uso por conta | usuários | limites e prevenção de abuso | legítimo interesse | Supabase | dias correntes | — |
 
 Transferência internacional: Google, Resend, GitHub e Anthropic (EUA); OSM/Photon/OSRM (Europa). Fornecedores com contratos/termos de proteção de dados; revisar a adoção das cláusulas-padrão da ANPD (Resolução CD/ANPD nº 19/2024) a cada fornecedor novo.

@@ -39,6 +39,7 @@ export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel
     opts.renderRec();
     renderRede();
     renderDepois();
+    renderPolicy();
     if (!v) return;
     renderConsumo();
     renderInds();
@@ -127,6 +128,24 @@ export function initInicio(opts: { signedIn: () => boolean; legacy: () => { fuel
       try { localStorage.setItem(DISMISS, JSON.stringify([...dismissed(), d.dataset.homeDismiss!].slice(-50))); } catch { /* sem acesso */ }
       renderDepois();
     }
+  });
+
+  /** Aviso único quando a política muda de forma relevante (transparência, LGPD). */
+  const POLICY_SEEN = 'politica_vista';
+  const POLICY_VERSION = '2026-10-22';
+  function renderPolicy() {
+    const el = $('home-policy');
+    let seen = '';
+    try { seen = localStorage.getItem(POLICY_SEEN) ?? ''; } catch { /* sem acesso */ }
+    // quem nunca usou o app vê a política nas boas-vindas; o aviso é para quem já usava
+    if (seen >= POLICY_VERSION || !S.logs.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div class="card policy-card"><span class="b15">Atualizamos a privacidade</span><span class="hint">Os números agregados da rede (médias por posto e região, sem identificar ninguém) podem ser usados em relatórios e parcerias. Nunca vendemos dados pessoais. Se preferir ficar de fora, desligue "Contribuir com a rede" no Perfil.</span>' +
+      '<div class="btn-row"><a class="btn sm" href="#/privacidade" data-policy-ok>Ler a política</a><button type="button" class="btn sm primary" data-policy-ok>Entendi</button></div></div>';
+  }
+  $('home-policy').addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-policy-ok]')) return;
+    try { localStorage.setItem(POLICY_SEEN, POLICY_VERSION); } catch { /* sem acesso */ }
+    $('home-policy').innerHTML = '';
   });
 
   function renderRede() {

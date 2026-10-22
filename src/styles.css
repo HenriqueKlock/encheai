@@ -764,3 +764,4 @@ a.next-card { text-decoration: none; }
 .doc li { font-size: 15px; line-height: 1.5; color: var(--ink-2); }
 .doc li b { color: var(--ink); }
 .row.batch .mid .a, .row.batch .mid .b { white-space: normal; overflow: visible; }
+.policy-card { display: flex; flex-direction: column; gap: 8px; }
