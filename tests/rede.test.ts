@@ -41,3 +41,12 @@ test('rendimento baixo ou bomba mal avaliada limitam a nota a "atenção"', () =
   assert.equal(goodShare(bomba, 'bomba'), 3 / 8);
   assert.equal(reliability(s, today, null, null).netWarn, null);
 });
+
+test('preço informado (visto na bomba): marcado como informado e, no mesmo dia, o pago vale antes do visto', () => {
+  const s: Station = { c: '9', n: 'Posto 9', b: 'Bandeira branca', e: 'Rua', br: 'Centro', m: 'Cidade', pg: 'n', la: -27.6, lo: -48.5, pr: { gc: [6.9, '2026-10-01'] } };
+  const live: StationLive = { station_id: '9', price: { gasolina: { v: 6.49, d: '2026-10-19', n: 2, k: 'informado' } }, yield: null, ratings: null };
+  assert.deepEqual(priceOf(s, 'gasolina', [], live), { price: 6.49, date: '2026-10-19', src: 'rede', n: 2, seen: true });
+  const own = [{ station_id: '9', fuel: 'gasolina' as const, price: 6.45, date: '2026-10-20', seen: true }, { station_id: '9', fuel: 'gasolina' as const, price: 6.39, date: '2026-10-20' }];
+  assert.deepEqual(priceOf(s, 'gasolina', own, live), { price: 6.39, date: '2026-10-20', src: 'voce' });
+  assert.equal(priceOf(s, 'gasolina', [own[0]], live)!.seen, true);
+});

@@ -8,7 +8,8 @@ import {
 } from '../postos';
 import { gps, loadStations, route, type FoundPlace, type Route } from '../lugares';
 import { currentSession, googlePhoto, googlePlaces, setPlace, type Places } from '../sync';
-import { fetchNetwork, network } from '../rede';
+import { fetchNetwork, invalidateNetwork, network } from '../rede';
+import { plausible, reportPrices, reportedAsOwn } from '../precos';
 import { getMeta, setMeta, stamp, db, type FuelLog } from '../db';
 import { S, carInfo, carLogs, carIntervals, subscribe } from '../store';
 import { mapPicks, stationUsage, type MapMode } from '../postos';
@@ -195,8 +196,10 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return { base: { kind: 'rota', path, detourKm: r.detour_m / 1000, roads: r.roads }, where: 'Casa → trabalho · ' + fmt(r.km, 1) + ' km', center: path[Math.floor(path.length / 2)] };
   }
 
-  const own = (): OwnPrice[] =>
-    S.logs.filter((f) => f.station_id && (f.fuel === 'gasolina' || f.fuel === 'etanol')).map((f) => ({ station_id: f.station_id!, fuel: f.fuel as Fuel, price: f.price_per_l || f.total_brl / f.liters, date: f.date }));
+  const own = (): OwnPrice[] => [
+    ...S.logs.filter((f) => f.station_id && (f.fuel === 'gasolina' || f.fuel === 'etanol')).map((f) => ({ station_id: f.station_id!, fuel: f.fuel as Fuel, price: f.price_per_l || f.total_brl / f.liters, date: f.date })),
+    ...reportedAsOwn(),
+  ];
   const usage = (): StationUse[] => stationUsage(carLogs(), carIntervals(), todayISO());
   /** O que você mesmo viveu em cada posto: suas estrelas (12 meses), falhas relatadas (6 meses) e o rendimento dos seus tanques. */
   function mine(): Map<string, Personal> {
@@ -281,7 +284,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (!pp) return '<span class="src none">sem preço recente</span>';
     const today = todayISO();
     const old = ageDays(pp.date, today) > 30;
-    const txt = pp.src === 'voce' ? 'seu abastecimento ' + deDia(pp.date, today) : (pp.src === 'rede' ? 'rede' : 'ANP') + ' · ' + (pp.src === 'anp' ? dm(pp.date) : ago(pp.date, today));
+    const txt = pp.src === 'voce' ? (pp.seen ? 'você viu ' + ago(pp.date, today) : 'seu abastecimento ' + deDia(pp.date, today)) : (pp.src === 'rede' ? (pp.seen ? 'informado' : 'rede') : 'ANP') + ' · ' + (pp.src === 'anp' ? dm(pp.date) : ago(pp.date, today));
     return '<span class="src ' + pp.src + (old ? ' old' : '') + '">' + txt + '</span>';
   }
   function distTxt(r: StationRow, b: Base) {
@@ -344,8 +347,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   }
   function priceWho(pp: PricePoint) {
     const today = todayISO();
-    if (pp.src === 'rede') return 'preço da rede ' + ago(pp.date, today);
-    if (pp.src === 'voce') return 'preço do seu abastecimento ' + deDia(pp.date, today);
+    if (pp.src === 'rede') return (pp.seen ? 'preço informado ' : 'preço da rede ') + ago(pp.date, today);
+    if (pp.src === 'voce') return pp.seen ? 'preço que você viu ' + ago(pp.date, today) : 'preço do seu abastecimento ' + deDia(pp.date, today);
     return 'ANP ' + dm(pp.date);
   }
 
@@ -680,7 +683,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const g = google.get(s.c);
     const priceCell = (fuel: Fuel, pp: PricePoint | null) =>
       '<div class="pc"><span class="k"><i class="dot ' + (fuel === 'gasolina' ? 'gas' : 'eth') + '"></i>' + FUEL[fuel] + '</span><span class="v">' + (pp ? brl(pp.price) : '–') + '</span><span class="d ' + (pp?.src ?? '') + '">' +
-      (pp ? (pp.src === 'rede' ? 'rede · ' + pl(pp.n ?? 1, 'pessoa', 'pessoas') + ' · ' + ago(pp.date, today) : pp.src === 'voce' ? 'seu último abastecimento aqui, ' + deDia(pp.date, today).replace(/^de /, '') : 'ANP · pesquisa de ' + dm(pp.date)) + (ageDays(pp.date, today) > 30 ? ' (antigo)' : '') : 'sem preço recente') + '</span></div>';
+      (pp ? (pp.src === 'rede' ? (pp.seen ? 'informado por ' : 'rede · ') + pl(pp.n ?? 1, 'pessoa', 'pessoas') + ' · ' + ago(pp.date, today) : pp.src === 'voce' ? (pp.seen ? 'você viu na bomba ' + ago(pp.date, today) : 'seu último abastecimento aqui, ' + deDia(pp.date, today).replace(/^de /, '')) : 'ANP · pesquisa de ' + dm(pp.date)) + (ageDays(pp.date, today) > 30 ? ' (antigo)' : '') : 'sem preço recente') + '</span></div>';
     const extra = (['ga', 'd10', 'ds', 'gnv'] as const).filter((k) => s.pr?.[k]).map((k) => ({ ga: 'Gasolina aditivada', d10: 'Diesel S10', ds: 'Diesel', gnv: 'GNV' })[k] + ' ' + brl(s.pr![k]![0])).join(' · ');
     let perKm = '';
     if (row.gas && row.eth && car.model.fuels.length > 1) {
@@ -768,11 +771,67 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       '<span class="hint">' + [s.e, s.br, s.m].filter(Boolean).map(esc).join(', ') + '</span>' +
       '<span class="hint">' + [s.b === 'Bandeira branca' ? 'bandeira branca' : s.b, dist].filter(Boolean).map(esc).join(' · ') + (s.pg === 'b' ? ' · localização aproximada' : '') + '</span></div>' +
       '<div class="price-grid">' + (car.model.fuels.includes('gasolina') ? priceCell('gasolina', row.gas) : '') + (car.model.fuels.includes('etanol') ? priceCell('etanol', row.eth) : '') + '</div>' +
+      reportBlock(s, row) +
       (perKm ? '<p class="hint" style="margin-top:-6px">' + perKm + '</p>' : '') +
       (extra ? '<p class="hint" style="margin-top:-6px">Também: ' + esc(extra) + '</p>' : '') +
       yieldCard + ratCard + relCard + meCard +
       '<div class="card"><div class="card-head"><span>Como chegar</span><span class="hint" id="ps-eta"></span></div><div class="ps-map" id="ps-map" role="img" aria-label="Mapa com o posto e o caminho até ele"></div><span class="hint" id="ps-map-note"></span></div>';
   }
+
+  /** "Informar preço": quem está no posto conta o preço da bomba, sem precisar abastecer. */
+  let reportOpen: string | null = null;
+  function reportBlock(s: Station, row: StationRow) {
+    const fuels = carInfo().model.fuels;
+    if (reportOpen !== s.c) {
+      return '<button type="button" class="link-btn pr-open" data-pr="open">' + ICON.plus + 'Informar o preço da bomba</button>';
+    }
+    const ph = (pp: PricePoint | null) => (pp ? fmt(pp.price, 2) : '0,00');
+    const inp = (fuel: Fuel, pp: PricePoint | null) =>
+      '<label class="field"><span><i class="dot ' + (fuel === 'gasolina' ? 'gas' : 'eth') + '"></i>' + FUEL[fuel] + ' R$/l</span><input class="inp sm" id="pr-' + fuel + '" inputmode="decimal" autocomplete="off" placeholder="' + ph(pp) + '"></label>';
+    return (
+      '<div class="card pr-card"><span class="b15">Preço na bomba agora</span>' +
+      '<span class="hint">Não precisa abastecer. Aparece para todos como "informado" por 7 dias; o preço de quem abastece aqui vale antes.</span>' +
+      '<div class="grid2">' + (fuels.includes('gasolina') ? inp('gasolina', row.gas) : '') + (fuels.includes('etanol') ? inp('etanol', row.eth) : '') + '</div>' +
+      '<div class="btn-row"><button type="button" class="btn sm" data-pr="cancel">Cancelar</button><button type="button" class="btn sm primary" data-pr="send">Enviar</button></div></div>'
+    );
+  }
+  $('posto-body').addEventListener('click', async (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-pr]');
+    if (!b || !shown) return;
+    const st = shown;
+    const act = b.dataset.pr;
+    if (act === 'open') {
+      if (!(await currentSession())) return toast('Entre na conta (Perfil) para informar preços.');
+      if (!S.prefs.contribute) return toast('Ligue "Contribuir com a rede" no Perfil para informar preços.');
+      reportOpen = st.c;
+      renderPosto(st);
+      setTimeout(() => (document.querySelector<HTMLInputElement>('#posto-body .pr-card input'))?.focus(), 50);
+      return;
+    }
+    if (act === 'cancel') { reportOpen = null; return renderPosto(st); }
+    if (act === 'send') {
+      const items: { fuel: Fuel; price: number }[] = [];
+      for (const fuel of ['gasolina', 'etanol'] as const) {
+        const el = document.getElementById('pr-' + fuel) as HTMLInputElement | null;
+        const v = el?.value.trim();
+        if (!v) continue;
+        const price = Number(v.replace(/[^\d,.]/g, '').replace(',', '.'));
+        if (!Number.isFinite(price) || !plausible(fuel, price)) return toast('O preço de ' + fuel + ' parece errado. Use o valor por litro, como 6,49.');
+        items.push({ fuel, price });
+      }
+      if (!items.length) return toast('Digite pelo menos um preço.');
+      b.disabled = true;
+      const err = await reportPrices(st.c, items);
+      b.disabled = false;
+      if (err) return toast(err);
+      reportOpen = null;
+      invalidateNetwork(st.c);
+      toast('Obrigado! O preço aparece para todos em até 5 minutos.');
+      renderPosto(st);
+      render();
+      renderHome();
+    }
+  });
 
   /** Abastecimentos antigos sem posto: oferece ligar a este. */
   function linkOffer(s: Station) {

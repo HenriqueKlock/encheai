@@ -125,7 +125,8 @@ function yearsBetween(a: string, b: string) {
 }
 
 /* ---------- rede (números agregados de quem usa o app) ---------- */
-export interface NetPrice { v: number; d: string; n: number }
+/** Preço da rede. k = 'informado' quando veio de quem viu na bomba (sem abastecimento na janela). */
+export interface NetPrice { v: number; d: string; n: number; k?: 'informado' }
 export type RatingTally = [number, number]; // [bons, total]
 export interface StationLive {
   station_id: string;
@@ -220,8 +221,9 @@ export function reliability(s: Station, today: string, g?: { rating: number; cou
 }
 
 /* ---------- preços ---------- */
-export interface PricePoint { price: number; date: string; src: 'anp' | 'voce' | 'rede'; n?: number }
-export interface OwnPrice { station_id: string; fuel: Fuel; price: number; date: string }
+/** seen = preço visto na bomba (informado), não pago num abastecimento. */
+export interface PricePoint { price: number; date: string; src: 'anp' | 'voce' | 'rede'; n?: number; seen?: boolean }
+export interface OwnPrice { station_id: string; fuel: Fuel; price: number; date: string; seen?: boolean }
 
 /**
  * Preço mais recente entre o que você pagou, o que a rede pagou (últimos 7 dias) e a pesquisa da ANP.
@@ -230,10 +232,11 @@ export interface OwnPrice { station_id: string; fuel: Fuel; price: number; date:
 export function priceOf(s: Station, fuel: Fuel, own: OwnPrice[], live?: StationLive | null): PricePoint | null {
   const code: PriceCode = fuel === 'gasolina' ? 'gc' : 'et';
   const cands: PricePoint[] = [];
-  const mine = own.filter((o) => o.station_id === s.c && o.fuel === fuel).sort((a, b) => b.date.localeCompare(a.date))[0];
-  if (mine) cands.push({ price: mine.price, date: mine.date, src: 'voce' });
+  // no mesmo dia, o que você pagou vale antes do que você viu na bomba
+  const mine = own.filter((o) => o.station_id === s.c && o.fuel === fuel).sort((a, b) => b.date.localeCompare(a.date) || Number(!!a.seen) - Number(!!b.seen))[0];
+  if (mine) cands.push(mine.seen ? { price: mine.price, date: mine.date, src: 'voce', seen: true } : { price: mine.price, date: mine.date, src: 'voce' });
   const net = live?.price?.[fuel];
-  if (net && net.v > 0) cands.push({ price: net.v, date: net.d, src: 'rede', n: net.n });
+  if (net && net.v > 0) cands.push(net.k === 'informado' ? { price: net.v, date: net.d, src: 'rede', n: net.n, seen: true } : { price: net.v, date: net.d, src: 'rede', n: net.n });
   const anp = s.pr?.[code];
   if (anp) cands.push({ price: anp[0], date: anp[1], src: 'anp' });
   // ordem estável: em caso de empate na data fica a fonte que entrou primeiro (você > rede > ANP)

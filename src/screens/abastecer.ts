@@ -166,7 +166,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     priceEl.value = fmt(pp.price, Math.round(pp.price * 1000) % 10 ? 3 : 2);
     priceAuto = true;
     if (!recent.includes('price')) recent = [...recent.filter((x) => x !== 'price'), 'price'].slice(-2);
-    hint.textContent = (pp.src === 'rede' ? 'Preço da rede (' + ago(pp.date) + ')' : pp.src === 'voce' ? 'Último preço que você pagou aqui (' + ago(pp.date) + ')' : 'Preço da pesquisa da ANP de ' + dm(pp.date)) + '. Confira na bomba.';
+    hint.textContent = (pp.src === 'rede' ? (pp.seen ? 'Preço informado por quem passou aqui (' : 'Preço da rede (') + ago(pp.date) + ')' : pp.src === 'voce' ? (pp.seen ? 'Preço que você viu na bomba (' : 'Último preço que você pagou aqui (') + ago(pp.date) + ')' : 'Preço da pesquisa da ANP de ' + dm(pp.date)) + '. Confira na bomba.';
     hint.hidden = false;
     recalc();
   }
