@@ -32,8 +32,8 @@ o rendimento medido do combustível e avaliações de um toque, além da fiscali
 
 ## Visual
 
-- Dois visuais: o clássico (padrão) e o novo, da marca Enche AI (`src/visual-novo.css`, ativo com a classe `v2` no `<html>`; escolha em `src/visual.ts`, guardada no aparelho). Quem ainda não escolheu vê um aviso no Início para experimentar; troca a qualquer hora em Perfil › Visual do app.
-- O visual novo não é só cor: Boas-vindas, Início, Postos (mapa no topo e lista em folha), ficha do posto, Abastecer, a avaliação depois de salvar e Meu carro têm marcação própria, gerada quando `isNovo()` é verdadeiro. Os ids dos campos são os mesmos nos dois visuais, então a lógica de cálculo e de gravação é uma só. Na avaliação do visual novo, bomba, atendimento e banheiro são etiquetas de três estados (1 toque: sim, 2: não, 3: sem resposta).
+- Um visual só: a marca Enche AI (`src/visual-novo.css`, sob a classe `v2` que o `<html>` já traz; `src/styles.css` é a base). Não há mais opção de visual no Perfil.
+- Boas-vindas, Início, Postos (mapa no topo e lista em folha), ficha do posto, Abastecer, a avaliação depois de salvar e Meu carro têm marcação própria, gerada quando `isNovo()` é verdadeiro (agora sempre). Os trechos `only-v1` e os ramos do visual clássico ainda estão no código e podem ser removidos aos poucos. Na avaliação, bomba, atendimento e banheiro são etiquetas de três estados (1 toque: sim, 2: não, 3: sem resposta).
 - Identidade: gota (logo), Mata #0E3B2E, Folha #1E7A4E, Broto #C3F25C, Névoa #F2F1EA; Bricolage Grotesque (títulos e números) e Instrument Sans (texto), servidas pelo próprio app.
 
 ## Privacidade
