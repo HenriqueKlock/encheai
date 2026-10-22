@@ -1165,12 +1165,26 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         '<div class="ps2-plates">' + (car.model.fuels.includes('etanol') ? plate('etanol', row.eth) : '') + (car.model.fuels.includes('gasolina') ? plate('gasolina', row.gas) : '') + '</div></div>';
       // anel do rendimento
       let pctTxt = '–', frac = 0, ringTone = 'ok', yT = 'Rendimento sem medição', yS = 'Cada tanque cheio registrado aqui conta: o app compara com o consumo normal de cada pessoa.';
+      const ringOf = (r: number) => {
+        pctTxt = Math.round(r * 100) + '%';
+        frac = Math.max(0.05, Math.min(1, (r - 0.85) / 0.2));
+        ringTone = r >= 0.97 ? 'ok' : 'warn';
+        return r >= 1.005 ? 'rende bem' : r < 0.97 ? 'rende menos' : 'rende normal';
+      };
+      const net = y && y.people > 0 ? ' A rede está medindo: ' + Math.min(y.people, 5) + ' de 5 pessoas e ' + Math.min(y.tanks, 15) + ' de 15 tanques.' : '';
       if (y?.pub && y.r != null) {
-        pctTxt = Math.round(y.r * 100) + '%';
-        frac = Math.max(0.05, Math.min(1, (y.r - 0.85) / 0.2));
-        ringTone = y.r >= 0.97 ? 'ok' : 'warn';
-        yT = y.r >= 1 ? 'Rende bem' : y.r < 0.97 ? 'Rende menos' : 'Rende normal';
+        const v = ringOf(y.r);
+        yT = v.charAt(0).toUpperCase() + v.slice(1);
         yS = 'Comparado com o consumo normal de cada pessoa. ' + pl(y.tanks, 'tanque', 'tanques') + ', ' + pl(y.people, 'pessoa', 'pessoas') + '.';
+      } else if (y?.r != null) {
+        // medição inicial da rede (3 pessoas e 6 tanques): mostra, avisando que ainda é pouco
+        yT = 'Primeiras medições: ' + ringOf(y.r);
+        yS = 'Ainda com poucos dados (' + pl(y.tanks, 'tanque', 'tanques') + ' de ' + pl(y.people, 'pessoa', 'pessoas') + '); o número fica firme com 5 pessoas e 15 tanques e só então entra na sugestão.';
+      } else if (u && u.delta != null && u.tanks > 0) {
+        // seus próprios tanques daqui contra a sua média do mesmo combustível
+        yT = 'Nos seus tanques: ' + ringOf(1 + u.delta);
+        yS = 'Comparado com a sua média do mesmo combustível, em ' + pl(u.tanks, 'tanque seu', 'tanques seus') + ' daqui' + (u.tanks < 2 ? ' (com mais um fica mais seguro).' : '.') + net;
+        ringTone += ' mine';
       } else if (y && y.people > 0) {
         frac = Math.min(1, (Math.min(y.people, 5) / 5 + Math.min(y.tanks, 15) / 15) / 2);
         ringTone = 'wait';
