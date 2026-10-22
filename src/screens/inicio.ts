@@ -12,6 +12,8 @@ import { $, cap, esc, fmt, km, monthYear, pl, todayISO } from '../ui';
 import { currentRoute, onShow } from '../router';
 import { ICON } from '../icons';
 import { AFTER_OPTIONS, pendingAfter, type AfterEffect } from '../depois';
+import { DROP, dismissVisualNotice, setVisual, showVisualNotice } from '../visual';
+import { toast } from '../ui';
 
 export function initInicio(opts: { signedIn: () => boolean; renderRec: () => void; answerAfter: (fillId: string, v: AfterEffect) => Promise<void> }) {
   function render() {
@@ -39,6 +41,7 @@ export function initInicio(opts: { signedIn: () => boolean; renderRec: () => voi
     renderRede();
     renderDepois();
     renderPolicy();
+    renderVisual();
     if (!v) return;
     renderConsumo();
     renderInds();
@@ -98,6 +101,29 @@ export function initInicio(opts: { signedIn: () => boolean; renderRec: () => voi
       '<div class="row-meta"><span>' + left + '</span><span>' + esc(right) + '</span></div></a>'
     );
   }
+
+  /* ---------- aviso do novo visual ---------- */
+  function renderVisual() {
+    const el = $('home-visual');
+    if (!showVisualNotice()) { el.innerHTML = ''; return; }
+    el.innerHTML =
+      '<div class="visual-card"><span class="vc-logo">' + DROP(34, '#C3F25C') + '</span>' +
+      '<span class="vc-t">Tem visual novo: <b>Enche AI</b></span>' +
+      '<span class="vc-s">Mais limpo, menos texto e números grandes. Dá para voltar ao atual no Perfil.</span>' +
+      '<div class="vc-btns"><button type="button" class="vc-go" data-visual="novo">Experimentar</button><button type="button" class="vc-no" data-visual="depois">Agora não</button></div></div>';
+  }
+  $('home-visual').addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-visual]');
+    if (!b) return;
+    if (b.dataset.visual === 'novo') {
+      setVisual('novo');
+      toast('Visual novo ligado. Para voltar ao anterior: Perfil › Visual do app.');
+    } else {
+      dismissVisualNotice();
+      toast('Tudo bem. O visual novo fica no Perfil quando quiser.');
+    }
+    render();
+  });
 
   /* ---------- no dia seguinte: como o carro andou com aquele combustível? ---------- */
   const DISMISS = 'depois_dispensado';

@@ -305,6 +305,14 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return out.slice(0, max).join('');
   }
 
+  /** Visual novo: o preço como placa de posto e o selo de confiança (só aparecem com a classe v2). */
+  function totem(o: { fuel: Fuel; price: PricePoint }) {
+    return '<span class="rec-totem only-v2"><em><i class="dot ' + (o.fuel === 'gasolina' ? 'gas' : 'eth') + '"></i>' + FUEL[o.fuel].toUpperCase() + '</em><b>' + fmt(o.price.price, 2) + '</b></span>';
+  }
+  function selo(r: StationRow['rel']) {
+    return '<span class="rec-selo only-v2 ' + r.level + '">' + SHIELD + fmt(r.score, 1) + '</span>';
+  }
+
   function recCard(kind: BaseKind, rec: Recommendation, b: Base) {
     const car = carInfo();
     const best = rec.best!;
@@ -324,9 +332,9 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
       ? '<p class="rec-warn">' + ICON.warn + '<span>' + esc(nm(rec.cheaperUnsafe.s)) + ' sairia mais barato, mas ficou de fora: ' + (rec.cheaperUnsafe.rel.recentSerious ? 'teve autuação séria da ANP nos últimos 12 meses.' : 'confiabilidade baixa.') + '</span></p>'
       : '';
     return (
-      '<button type="button" class="rec-card" data-posto="' + best.s.c + '"><span class="l">' + REC_LABEL[kind] + '</span>' +
-      '<span class="t">' + FUEL[best.fuel] + ' no ' + esc(nm(best.s)) + '</span>' +
-      '<span class="s">' + brl(best.price.price) + '/l · ' + dist + ' · ' + priceWho(best.price) + '</span>' +
+      '<button type="button" class="rec-card" data-posto="' + best.s.c + '"><span class="l">' + REC_LABEL[kind] + '</span>' + selo(best.rel) +
+      '<span class="t"><span class="only-v1">' + FUEL[best.fuel] + ' no </span>' + esc(nm(best.s)) + '</span>' + totem(best) +
+      '<span class="s"><span class="only-v1">' + brl(best.price.price) + '/l · </span>' + dist + ' · ' + priceWho(best.price) + '</span>' +
       (netBadges(best.s.c ? network().get(best.s.c) ?? null : null) ? '<span class="rec-badges">' + netBadges(network().get(best.s.c) ?? null, 3) + '</span>' : '') +
       tiles + '<span class="f">' + foot + '</span></button>' + cheap + warn
     );
@@ -1073,9 +1081,9 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const cheapTxt = cheapNote(rec, carInfo().model.kmTank, true);
     const badges = netBadges(b.s.c ? network().get(b.s.c) ?? null : null, 2);
     el.innerHTML =
-      '<div class="rec-card"><button type="button" class="rec-main" data-home-posto="' + b.s.c + '" data-base="' + kind + '"><span class="l">' + where + '</span>' +
-      '<span class="t">' + FUEL[b.fuel] + ' no ' + esc(nm(b.s)) + '</span>' +
-      '<span class="s">' + brl(b.price.price) + '/l · ' + dist + (rec.bestOther && rec.bestOther.cost - b.cost >= 0.5 ? ' · ' + brl(rec.bestOther.cost - b.cost) + ' a menos que ' + FUEL[rec.bestOther.fuel].toLowerCase() : '') + '</span>' +
+      '<div class="rec-card"><button type="button" class="rec-main" data-home-posto="' + b.s.c + '" data-base="' + kind + '"><span class="l">' + where + '</span>' + selo(b.rel) +
+      '<span class="t"><span class="only-v1">' + FUEL[b.fuel] + ' no </span>' + esc(nm(b.s)) + '</span>' + totem(b) +
+      '<span class="s"><span class="only-v1">' + brl(b.price.price) + '/l · </span>' + dist + '<span class="only-v2"> · ' + priceWho(b.price) + '</span>' + (rec.bestOther && rec.bestOther.cost - b.cost >= 0.5 ? '<span class="save"> · <b>' + brl(rec.bestOther.cost - b.cost) + ' a menos</b> que ' + FUEL[rec.bestOther.fuel].toLowerCase() + '</span>' : '') + '</span>' +
       '<span class="rec-badges"><span class="nb on-dark ' + b.price.src + '">' + priceWho(b.price) + '</span>' + badges.replace(/class="nb/g, 'class="nb on-dark') + '<span class="nb on-dark">ANP ' + fmt(b.rel.anp, 1) + '</span></span>' +
       (favTxt ? '<span class="f">' + esc(favTxt) + '</span>' : '') + (cheapTxt ? '<span class="f cheap-f">' + esc(cheapTxt) + '</span>' : '') + '</button>' +
       '<a class="more" href="#/postos" data-home-base="' + kind + '">Ver outros postos ' + ICON.chev + '</a></div>';
@@ -1129,3 +1137,5 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   return { refresh, renderHome, openPosto, ensureFile, nearby, byId, nameOf: nm, priceAt, setHere, usage, favorite, place, fetchGoogleAround: fetchGoogle };
 }
 export type PostosApi = ReturnType<typeof initPostos>;
+
+const SHIELD = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/></svg>';

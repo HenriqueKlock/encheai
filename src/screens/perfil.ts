@@ -2,6 +2,7 @@
 // dados (backup, baixar), privacidade e exclusão da conta.
 import { db, setMeta } from '../db';
 import { exportBackup } from '../backup';
+import { isNovo, setVisual, type Visual } from '../visual';
 import { TERMS_VERSION } from '../config';
 import { currentSession, deleteAccount, setContribute, setPlace, signOut, supabase, sync, type PlaceKind, type SyncStatus } from '../sync';
 import { S, activeVehicles, current, subscribe } from '../store';
@@ -80,8 +81,12 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     const inst = canInstall() && !isStandalone()
       ? '<div class="list-card"><button type="button" class="row simple" data-p="install"><span class="mid"><span class="a">Instalar o Enche Aí</span><span class="b">Abre direto da tela inicial, como um app</span></span><span></span><span class="chev">' + ICON.chev + '</span></button></div>'
       : '';
+    const nv = isNovo();
+    const visual =
+      '<div class="card visual-pick"><div class="switch-row"><div class="t"><span>Visual do app</span><span>' + (nv ? 'Novo: Enche AI' : 'Clássico') + '</span></div>' +
+      '<div class="seg" role="group" aria-label="Visual do app"><button type="button" data-vis="classico" aria-selected="' + !nv + '">Clássico</button><button type="button" data-vis="novo" aria-selected="' + nv + '">Novo</button></div></div></div>';
     const nav =
-      inst +
+      inst + visual +
       '<div class="list-card">' +
       '<a class="row nav" href="#/locais"><span class="ic gray">' + PIN + '</span><span class="mid"><span class="a">Casa e trabalho</span><span class="b">' + (pls.length ? esc(pls.map((p) => p!.label).join(' · ')) : 'Base para comparar postos') + '</span></span><span class="chev">' + ICON.chev + '</span></a>' +
       '<button type="button" class="row nav" data-act="cars"><span class="ic gray">' + activeVehicles().length + '</span><span class="mid"><span class="a">Carros</span><span class="b">' + esc(cars) + '</span></span><span class="chev">' + ICON.chev + '</span></button>' +
@@ -136,6 +141,11 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     toast(el.checked ? 'Obrigado! Seus abastecimentos com posto entram nas médias da rede.' : 'Contribuição desligada. Em até 15 minutos seus dados deixam de contar.');
   });
   $('perfil-body').addEventListener('click', async (e) => {
+    const vis = (e.target as HTMLElement).closest<HTMLElement>('[data-vis]');
+    if (vis) {
+      setVisual(vis.dataset.vis as Visual);
+      return render();
+    }
     const rv = (e.target as HTMLElement).closest<HTMLElement>('[data-revoke]');
     if (rv) {
       const { error } = await supabase.auth.oauth.revokeGrant({ clientId: rv.dataset.revoke! });

@@ -9,6 +9,7 @@
   <meta name="theme-color" content="#0B0D10" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <script>try{if(localStorage.getItem('visual')==='novo')document.documentElement.classList.add('v2')}catch(e){}</script>
 </head>
 <body>
 
@@ -27,6 +28,7 @@
       <a class="sync" id="sync" href="#/perfil"><i></i><span>Salvo só neste aparelho</span></a>
     </div>
     <div id="home-empty" class="card" hidden></div>
+    <div id="home-visual"></div>
     <div id="home-policy"></div>
     <div id="home-depois"></div>
     <div id="home-rec"></div>
@@ -210,7 +212,7 @@
   <div class="in">
     <a class="tab" href="#/inicio" data-tab="inicio" aria-current="page"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Início</a>
     <a class="tab" href="#/postos" data-tab="postos"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M3 20h12M14 9h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3M7 7h4"/></svg>Postos</a>
-    <button type="button" class="tab-add" id="add-btn"><span><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>Abastecer</button>
+    <button type="button" class="tab-add" id="add-btn"><span><svg class="only-v1" aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><svg class="only-v2" aria-hidden="true" width="34" height="34" viewBox="0 0 48 48"><path d="M24 3.5C24 3.5 9.5 19.6 9.5 29.8 9.5 37.8 16 44.3 24 44.3S38.5 37.8 38.5 29.8C38.5 19.6 24 3.5 24 3.5Z" fill="#C3F25C"/><path d="M24 22v14M17 29h14" stroke="#0E3B2E" stroke-width="3.4" stroke-linecap="round"/></svg></span>Abastecer</button>
     <a class="tab" href="#/carro" data-tab="carro"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M6.5 17v2M17.5 17v2M4 13l2-5.5A2 2 0 0 1 7.9 6h8.2a2 2 0 0 1 1.9 1.5L20 13v4H4z"/><circle cx="7.5" cy="13.5" r="1"/><circle cx="16.5" cy="13.5" r="1"/></svg>Meu carro</a>
     <a class="tab" href="#/perfil" data-tab="perfil"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Perfil</a>
   </div>

@@ -2,7 +2,15 @@ import '@fontsource/geist/latin-400.css';
 import '@fontsource/geist/latin-500.css';
 import '@fontsource/geist/latin-600.css';
 import '@fontsource/geist/latin-700.css';
+import '@fontsource/bricolage-grotesque/latin-700.css';
+import '@fontsource/bricolage-grotesque/latin-800.css';
+import '@fontsource/instrument-sans/latin-400.css';
+import '@fontsource/instrument-sans/latin-500.css';
+import '@fontsource/instrument-sans/latin-600.css';
+import '@fontsource/instrument-sans/latin-700.css';
 import './styles.css';
+import './visual-novo.css';
+import { applyVisual } from './visual';
 
 import { registerSW } from 'virtual:pwa-register';
 import { startInstall } from './instalar';
@@ -103,6 +111,7 @@ onSyncStatus((st) => {
 });
 
 async function boot() {
+  applyVisual();
   signedIn = !!(await currentSession());
   startRouter();
   // pedido de conexão do Claude: vai direto para a autorização, sem boas-vindas

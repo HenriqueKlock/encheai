@@ -29,6 +29,11 @@ o rendimento medido do combustível e avaliações de um toque, além da fiscali
 - **Trazer histórico (`#/importar`):** planilha .csv/.xlsx sem IA (`src/planilha.ts`), resposta da IA da pessoa no formato `encheai-importacao-1` (`src/importacao.ts`, o mesmo arquivo roda na função `mcp`) e backup. Tudo passa por uma prévia que tira duplicados.
 - **Dados da ANP:** `pipeline/postos.py` roda no GitHub Actions (`dados.yml`, terça e sábado). Gera `postos-SC.json` na branch `dados`, que o deploy publica em `/dados/`.
 
+## Visual
+
+- Dois visuais: o clássico (padrão) e o novo, da marca Enche AI (`src/visual-novo.css`, ativo com a classe `v2` no `<html>`; escolha em `src/visual.ts`, guardada no aparelho). Quem ainda não escolheu vê um aviso no Início para experimentar; troca a qualquer hora em Perfil › Visual do app.
+- Identidade: gota (logo), Mata #0E3B2E, Folha #1E7A4E, Broto #C3F25C, Névoa #F2F1EA; Bricolage Grotesque (títulos e números) e Instrument Sans (texto), servidas pelo próprio app.
+
 ## Privacidade
 
 - Documentos de LGPD em `docs/lgpd/`: registro das operações, avaliação de legítimo interesse (rede de postos) e plano de incidentes. Base da rede: legítimo interesse com opção de sair.

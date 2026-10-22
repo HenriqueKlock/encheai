@@ -18,7 +18,9 @@
     "vite-plugin-pwa": "^0.21.1"
   },
   "dependencies": {
+    "@fontsource/bricolage-grotesque": "5.3.0",
     "@fontsource/geist": "5.2.9",
+    "@fontsource/instrument-sans": "5.3.0",
     "@supabase/supabase-js": "2.117.2",
     "dexie": "^4.0.10",
     "fflate": "^0.8.2",
