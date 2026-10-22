@@ -7,6 +7,8 @@
 import { isNovo } from './visual';
 
 type Pos = 'aberta' | 'meio' | 'baixa';
+/** No computador (tela larga) a lista fica numa coluna ao lado do mapa: não há folha para arrastar. */
+export const desktop = () => matchMedia('(min-width: 960px)').matches;
 const ORDER: Pos[] = ['aberta', 'meio', 'baixa'];
 
 export function initFolha(sheet: HTMLElement, grab: HTMLElement, body: HTMLElement, onSettle?: (p: Pos) => void) {
@@ -131,7 +133,7 @@ export function initFolha(sheet: HTMLElement, grab: HTMLElement, body: HTMLEleme
   apply('meio', false);
   return {
     /** Quanto da altura da tela a folha cobre agora (para o mapa enquadrar os postos na parte visível). */
-    cover: () => (isNovo() ? Math.max(0, window.innerHeight - curTop()) : 0),
+    cover: () => (isNovo() && !desktop() ? Math.max(0, window.innerHeight - curTop()) : 0),
     set: (p: Pos) => apply(p),
     get: () => pos,
   };

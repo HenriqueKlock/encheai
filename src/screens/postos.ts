@@ -759,7 +759,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const Lf = await loadLeaflet();
     if (currentRoute().view !== 'postos') return;
     if (!pmap) {
-      pmap = Lf.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+      pmap = Lf.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: mouse(), zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+      if (mouse()) Lf.control.zoom({ position: 'bottomright', zoomInTitle: 'Aproximar', zoomOutTitle: 'Afastar' }).addTo(pmap);
       pmap.attributionControl.setPrefix(false);
       Lf.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(pmap);
       layer = Lf.layerGroup().addTo(pmap);
@@ -1258,7 +1259,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     if (!el || shown?.c !== s.c) return;
     const Lf = await loadLeaflet();
     map?.remove();
-    map = Lf.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+    map = Lf.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: mouse(), zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+    if (mouse()) Lf.control.zoom({ position: 'bottomright', zoomInTitle: 'Aproximar', zoomOutTitle: 'Afastar' }).addTo(map);
     map.attributionControl.setPrefix(false);
     Lf.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
     const dest: [number, number] = [s.la, s.lo];
@@ -1562,6 +1564,8 @@ export type PostosApi = ReturnType<typeof initPostos>;
 const BACK = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>';
 const SHIELD_OK = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3.2v5.9c0 4.6-3.2 8.6-7.5 10-4.3-1.4-7.5-5.4-7.5-10V5.7z" fill="currentColor"/><path d="M8.8 12.2l2.2 2.2 4.4-4.6" stroke="var(--sh-in, #C3F25C)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const INFO = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/></svg>';
+/** Computador com mouse: o mapa ganha botões de zoom e a rodinha aproxima (no celular, o gesto de pinça já faz isso). */
+const mouse = () => matchMedia('(hover: hover) and (pointer: fine)').matches;
 const LUPA = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>';
 const CHEV_S = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>';
 const XS = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
