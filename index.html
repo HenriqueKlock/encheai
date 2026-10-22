@@ -48,14 +48,18 @@
       <button type="button" role="tab" data-base="trabalho" aria-selected="false">Trabalho</button>
       <button type="button" role="tab" data-base="rota" aria-selected="false">Caminho</button>
     </div>
-    <div class="filters" id="p-filters" aria-label="Filtros"></div>
-    <div class="p-where" id="p-where"></div>
     <div class="p-map-wrap" id="p-map-wrap" hidden>
       <div class="p-map" id="p-map" role="img" aria-label="Mapa com as principais opções de postos"></div>
       <div class="map-mode mini-seg" id="p-map-mode" role="group" aria-label="O que o mapa mostra"><button type="button" data-mode="preco" aria-pressed="true">Preço</button><button type="button" data-mode="avaliacao" aria-pressed="false">Avaliação</button></div>
       <p class="map-legend" id="p-map-legend"></p>
     </div>
-    <div id="p-body" class="view" style="gap:12px"></div>
+    <!-- No visual novo, a lista é uma folha que se arrasta sobre o mapa; no clássico este bloco não existe para o layout -->
+    <div class="p-sheet" id="p-sheet">
+      <button type="button" class="p-grab" id="p-grab" aria-label="Arrastar a lista. Toque para mostrar ou esconder o mapa"><i></i></button>
+      <div class="filters" id="p-filters" aria-label="Filtros"></div>
+      <div class="p-where" id="p-where"></div>
+      <div id="p-body" class="view" style="gap:12px"></div>
+    </div>
   </section>
 
   <!-- Meu carro: resumo, histórico e manutenção -->

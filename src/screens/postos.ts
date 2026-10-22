@@ -18,6 +18,7 @@ import { currentRoute, go, onShow } from '../router';
 import { addressSearch } from './busca-endereco';
 import { ICON } from '../icons';
 import { isNovo } from '../visual';
+import { initFolha } from '../folha';
 
 type BaseKind = 'agora' | 'casa' | 'trabalho' | 'rota' | 'busca';
 const REC_LABEL: Record<BaseKind, string> = {
@@ -593,6 +594,8 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     return '<p class="foot-note">Preços: o que a rede pagou nos últimos 7 dias, os seus abastecimentos e a pesquisa semanal da ANP' + (w ? ' (mais recente: ' + dm(w[0]) + ' a ' + dm(w[1]) + ')' : '') + '. Sugerido: o menor custo para rodar (preço, combustível, desvio e rendimento medido), pesado pela confiabilidade (fiscalização da ANP nos últimos 5 anos, notas do Google, avaliações da rede e as suas) e pela idade do preço; o menor preço aparece à parte. ' + g + ' Distâncias aproximadas.</p>';
   }
 
+  const folha = initFolha($('p-sheet'), $('p-grab'), $('p-body'));
+
   /* ---------- mapa da aba ---------- */
   let L: typeof import('leaflet') | null = null;
   let pmap: import('leaflet').Map | null = null;
@@ -647,8 +650,10 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const key = base + '|' + radius + '|' + rows.length + '|' + mapMode;
     if (refit && key !== mapKey && pts.length) {
       mapKey = key;
+      // no visual novo a folha cobre a parte de baixo do mapa: enquadra os postos na parte visível
+      const pad = isNovo() ? { paddingTopLeft: [24, 120] as [number, number], paddingBottomRight: [24, folha.cover() + 24] as [number, number] } : {};
       if (pts.length === 1) pmap.setView(pts[0], 14);
-      else pmap.fitBounds(Lf.latLngBounds(pts).pad(0.1));
+      else pmap.fitBounds(Lf.latLngBounds(pts).pad(isNovo() ? 0 : 0.1), pad);
     }
     // sem etiquetas encavaladas: a sugerida primeiro, depois na ordem da lista; aproximar mostra as escondidas
     const placed: { x: number; y: number }[] = [];

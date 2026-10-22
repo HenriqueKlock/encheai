@@ -231,6 +231,11 @@ select.inp { appearance: none; background-image: linear-gradient(45deg, transpar
 .fuel-seg .fl { display: inline-flex; align-items: center; gap: 8px; }
 .total2, .km-row { display: contents; }
 #carro-head2:empty { display: none; }
+/* aba Postos no clássico: a folha não existe para o layout; mapa entre os filtros e a lista */
+.p-sheet { display: contents; }
+.p-grab { display: none; }
+#p-map-wrap { order: 1; }
+#p-body { order: 2; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; }
 .switch-row .t { display: flex; flex-direction: column; }
 .switch-row .t span:first-child { font-size: 16px; font-weight: 500; }
