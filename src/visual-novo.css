@@ -439,7 +439,6 @@
 @media (prefers-color-scheme: dark) { .v2 #v-inicio .car-chip > svg:first-child { color: var(--eth); } }
 .v2 #v-inicio { gap: 14px; }
 .v2 #v-inicio > div:empty { display: none; }
-.v2 #home-depois { order: 5; }
 .v2 #home-rede { order: 6; }
 .v2 #v-inicio .top { min-height: 52px; }
 
@@ -496,7 +495,14 @@
 .mn2-b .mn2-t { font-size: 15px; }
 .mn2-b .mn2-sub { font-size: 13px; color: var(--muted); margin-top: -6px; }
 
-.depois2 { gap: 12px; }
+.depois2 { gap: 12px; background: var(--broto); color: #0E3B2E; box-shadow: 0 6px 18px rgba(14, 59, 46, .16); }
+.depois2 .d2-l { font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #1E5C48; }
+.depois2 .d2-x { color: #1E5C48 !important; }
+.depois2 .d2-opts button { background: #FFFFFF !important; border-color: transparent !important; color: #0E3B2E !important; }
+.depois2 .d2-opts button:active { background: #F2F1EA !important; }
+.depois2 .d2-push:empty { display: none; }
+.depois2 .d2-push .link-btn { color: #0E3B2E; padding-left: 0; display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.depois2 .d2-push .hint { color: #1E5C48; }
 .depois2 .d2-h { display: flex; align-items: flex-start; gap: 8px; }
 .depois2 .t { flex: 1; font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: -.01em; line-height: 1.2; }
 .depois2 .d2-x { flex: none; width: 32px; height: 32px; margin: -6px -6px 0 0; border: 0; border-radius: 16px; background: none; color: var(--faint); display: grid; place-items: center; }

@@ -14,6 +14,7 @@ import { ICON } from '../icons';
 import { AFTER_OPTIONS, pendingAfter, type AfterEffect } from '../depois';
 import { isNovo } from '../visual';
 import { toast } from '../ui';
+import { enablePush, pushState } from '../lembretes';
 
 export function initInicio(opts: { signedIn: () => boolean; renderRec: () => void; answerAfter: (fillId: string, v: AfterEffect) => Promise<void> }) {
   function render() {
@@ -170,10 +171,14 @@ export function initInicio(opts: { signedIn: () => boolean; renderRec: () => voi
     const name = (f.station ?? 'posto').split(' · ')[0];
     const ago = Math.round((Date.parse(todayISO()) - Date.parse(f.date)) / 864e5);
     if (isNovo()) {
+      // no topo do Início, em destaque: uma pergunta de um toque sobre o último abastecimento
       el.innerHTML =
-        '<div class="card depois2"><div class="d2-h"><span class="t">Como o carro andou com o combustível do ' + esc(name) + '?</span>' +
+        '<div class="card depois2"><span class="d2-l">Depois de abastecer · ' + esc(f.date.slice(8, 10) + '/' + f.date.slice(5, 7)) + (ago === 1 ? ' (ontem)' : ' (' + ago + ' dias)') + '</span>' +
+        '<div class="d2-h"><span class="t">Como o carro andou com o combustível do ' + esc(name) + '?</span>' +
         '<button type="button" class="d2-x" data-home-dismiss="' + esc(f.id) + '" aria-label="Agora não">' + X + '</button></div>' +
-        '<div class="d2-opts">' + AFTER_OPTIONS.map(([v, t]) => '<button type="button" data-home-after="' + v + '" data-fill="' + esc(f.id) + '" aria-label="' + t + '">' + AFTER_ICON[v] + AFTER_2[v] + '</button>').join('') + '</div></div>';
+        '<div class="d2-opts">' + AFTER_OPTIONS.map(([v, t]) => '<button type="button" data-home-after="' + v + '" data-fill="' + esc(f.id) + '" aria-label="' + t + '">' + AFTER_ICON[v] + AFTER_2[v] + '</button>').join('') + '</div>' +
+        '<div class="d2-push" id="d2-push"></div></div>';
+      void offerPush();
       return;
     }
     el.innerHTML =
@@ -182,8 +187,24 @@ export function initInicio(opts: { signedIn: () => boolean; renderRec: () => voi
       '<div class="after-opts">' + AFTER_OPTIONS.map(([v, t]) => '<button type="button" data-home-after="' + v + '" data-fill="' + esc(f.id) + '">' + t + '</button>').join('') + '</div>' +
       '<button type="button" class="link-btn muted" data-home-dismiss="' + esc(f.id) + '">Agora não</button></div>';
   }
+  /** Se o aparelho ainda não recebe o lembrete, oferece ligar ali mesmo (chega às 19h do dia seguinte). */
+  async function offerPush() {
+    const st = await pushState();
+    const box = document.getElementById('d2-push');
+    if (!box) return;
+    box.innerHTML = st === 'off'
+      ? '<button type="button" class="link-btn" data-push-on>' + ICON.bell + 'Me avisar no celular das próximas vezes</button>'
+      : st === 'install' ? '<span class="hint">Para receber o aviso no iPhone, instale o app na tela inicial (Compartilhar › Adicionar à Tela de Início).</span>'
+      : '';
+  }
   $('home-depois').addEventListener('click', async (e) => {
     const el = e.target as HTMLElement;
+    if (el.closest('[data-push-on]')) {
+      const err = await enablePush();
+      if (err) return toast(err);
+      toast('Pronto: no dia seguinte a cada abastecimento chega um lembrete às 19h.');
+      return void offerPush();
+    }
     const a = el.closest<HTMLElement>('[data-home-after]');
     if (a) {
       a.closest('.depois-card')?.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
