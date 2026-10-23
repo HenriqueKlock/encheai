@@ -823,3 +823,12 @@ a.next-card { text-decoration: none; }
 .car1 .c1-go { background: #C3F25C; color: #0E3B2E; border: 0; }
 .car1 .err { color: #FFB4A8; }
 #v-boasvindas:has(.car1), .car1 { background: #0E3B2E; color: #F2F1EA; }
+
+/* Painel do app (admin) */
+.adm-dias { align-self: flex-start; margin: 0 16px; }
+.adm-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.adm-k { gap: 2px; padding: 12px; } .adm-k b { font-size: 24px; } .adm-k span { font-size: 12px; color: var(--muted); }
+.adm-bar { display: grid; grid-template-columns: minmax(0, 1.4fr) 1fr 36px; align-items: center; gap: 8px; font-size: 13px; }
+.adm-bar .adm-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .adm-bar em { font-style: normal; color: var(--muted); font-size: 12px; }
+.adm-t { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; } .adm-t i { display: block; height: 100%; background: #2D6250; border-radius: 4px; }
+.adm-bar b { text-align: right; }

@@ -1,6 +1,7 @@
 // Abastecer: o posto vem do GPS (com um toque para trocar), o preço sugerido vem da rede ou da ANP,
 // e depois de salvar o app pede uma avaliação de um toque (bomba, atendimento, banheiro).
 import { db, softDelete, stamp, uuid, type FuelLog, type FuelType } from '../db';
+import { track } from '../uso';
 import { aggregate, intervals, parseIntLoose, parseNum } from '../calc';
 import { gps } from '../lugares';
 import { ageDays, type Fuel, type PricePoint, type Station } from '../postos';
@@ -241,6 +242,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
       return needCar();
     }
     editing = id ? S.logs.find((f) => f.id === id) ?? null : null;
+    if (!editing) track('fill_open');
     delArmed = false;
     adjust = false;
     pickerOpen = false;
@@ -444,6 +446,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     // mudou de posto: a avaliação era do posto anterior
     if (editing && editing.station_id !== row.station_id) await deleteRating(editing.id);
     await db.fuel_logs.put(row);
+    if (!editing) track('fill_saved');
     if (st) invalidateNetwork(st.c);
     // avaliar o posto de agora e perguntar como o carro andou com o combustível do abastecimento anterior
     if (!wasEdit && (await openAfterSave(row))) return;

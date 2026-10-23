@@ -8,6 +8,8 @@ import { S, activeVehicles, current, subscribe } from '../store';
 import { $, closeSheets, esc, openSheet, pl, todayISO, toast } from '../ui';
 import { currentRoute, onShow } from '../router';
 import { renderLogin } from './conta';
+import { souAdmin } from './admin';
+import { setUso, usoOn } from '../uso';
 import { ICON } from '../icons';
 import { canInstall, install, isStandalone, onInstallChange } from '../instalar';
 import { disablePush, enablePush, pushState, type PushState } from '../lembretes';
@@ -58,6 +60,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     const a = document.activeElement;
     if (a instanceof HTMLInputElement && a.type !== 'checkbox' && $('perfil-body').contains(a)) return;
     await refreshSession();
+    const admin = email ? await souAdmin() : false;
     const body = $('perfil-body');
     const cars = activeVehicles().map((c) => c.name).join(' · ') || 'Nenhum cadastrado';
     const pls = [S.places.casa, S.places.trabalho].filter((p) => p && !p.deleted_at);
@@ -99,6 +102,8 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
       '<button type="button" class="row simple" data-p="export"><span class="mid"><span class="a">Baixar meus dados</span><span class="b">Arquivo JSON com carros e registros</span></span><span></span><span class="chev">' + ICON.chev + '</span></button>' +
       '<a class="row simple" href="#/importar"><span class="mid"><span class="a">Trazer histórico</span><span class="b">Planilha, a sua IA, o Claude ou um backup; confere antes de gravar</span></span><span></span><span class="chev">' + ICON.chev + '</span></a>' +
       '<button type="button" class="row simple" data-act="relato"><span class="mid"><span class="a">Relatar problema ou sugestão</span><span class="b">Vai direto para quem faz o app</span></span><span></span><span class="chev">' + ICON.chev + '</span></button>' +
+      '<button type="button" class="row simple" data-p="uso"><span class="mid"><span class="a">Medir uso do app</span><span class="b">' + (usoOn() ? 'Ligado: só por quais telas passa, sem seus dados' : 'Desligado') + '</span></span><span></span><span class="chev">' + (usoOn() ? 'Desligar' : 'Ligar') + '</span></button>' +
+      (admin ? '<a class="row simple" href="#/admin"><span class="mid"><span class="a">Painel do app</span><span class="b">Uso agregado, só para administradores</span></span><span></span><span class="chev">' + ICON.chev + '</span></a>' : '') +
       '<a class="row simple" href="#/privacidade"><span class="mid"><span class="a">Privacidade e termos</span><span class="b">O que guardamos e o que a rede mostra</span></span><span></span><span class="chev">' + ICON.chev + '</span></a>' +
       (email ? '<button type="button" class="row simple" data-p="out"><span class="mid"><span class="a">Sair desta conta</span><span class="b">Os dados continuam neste aparelho</span></span><span></span><span class="chev">' + ICON.chev + '</span></button>' : '') +
       '</div>';
@@ -148,6 +153,7 @@ export function initPerfil(opts: { status: () => SyncStatus; statusText: () => s
     if (!b) return;
     const p = b.dataset.p;
     if (p === 'sync') { await sync(); return render(); }
+    if (p === 'uso') { setUso(!usoOn()); return render(); }
     if (p === 'out') { await disablePush(); push = null; await signOut(); toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
     if (p === 'export') return download();
     if (p === 'install') { if (await install()) toast('Instalado! Procure o Enche AI na tela inicial.'); return render(); }

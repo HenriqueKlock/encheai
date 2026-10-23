@@ -3,6 +3,7 @@ import { db, setMeta, stamp, uuid, type Vehicle, type VehicleFuel } from '../db'
 import { parseIntLoose } from '../calc';
 import { S, activeVehicles, current } from '../store';
 import { $, closeSheets, esc, openSheet, toast } from '../ui';
+import { track } from '../uso';
 
 export function initCarros() {
   function openCars() {
@@ -90,7 +91,7 @@ export function initCarros() {
       archived: 0,
     });
     await db.vehicles.put(row);
-    if (!editingVehicle) await setMeta('current_vehicle', row.id);
+    if (!editingVehicle) { await setMeta('current_vehicle', row.id); track('car_created'); }
     const next = editingVehicle ? null : afterSave;
     afterSave = null;
     closeSheets(next ?? undefined);

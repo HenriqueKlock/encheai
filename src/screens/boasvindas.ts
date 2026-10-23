@@ -6,6 +6,7 @@ import { getHomePrefs, setContribute } from '../sync';
 import { $ } from '../ui';
 import { renderLogin } from './conta';
 import { DROP, isNovo } from '../visual';
+import { track } from '../uso';
 
 const DONE = 'welcome_done';
 /** Quem passou pelas boas-vindas já viu a política atual: não precisa do aviso de atualização no Início. */
@@ -28,6 +29,7 @@ export function showWelcome(opts: { onClose: () => void }) {
   const el = $('v-boasvindas');
   document.body.classList.add('welcoming');
   el.hidden = false;
+  track('welcome');
   el.innerHTML = isNovo() ? NOVO :
     '<div class="welcome-in">' +
     '<div class="brand"><span class="logo only-v1"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M3 20h12M14 9h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3M7 7h4"/></svg></span><span class="only-v1">Enche AI</span><span class="logo2 only-v2">' + DROP(36, '#C3F25C') + '</span><span class="wordmark only-v2">Enche <em>AI</em></span></div>' +
@@ -55,6 +57,7 @@ export function showWelcome(opts: { onClose: () => void }) {
   $('w-privacy').addEventListener('click', () => close(false));
   $('w-skip').addEventListener('click', async () => {
     await setMeta(DONE, true);
+    track('welcome_skip');
     close(true);
   });
   function close(done: boolean) {

@@ -160,6 +160,13 @@
   </section>
 
   <!-- Privacidade e termos -->
+  <section id="v-admin" class="view" aria-label="Painel do app" hidden>
+    <a class="back" href="#/perfil"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>Perfil</a>
+    <div class="page-head" style="padding-top:0"><h1>Painel do app</h1></div>
+    <div class="mini-seg adm-dias" id="adm-dias" role="group" aria-label="Período"><button type="button" data-d="7" aria-pressed="false">7 dias</button><button type="button" data-d="14" aria-pressed="true">14 dias</button><button type="button" data-d="30" aria-pressed="false">30 dias</button><button type="button" data-d="90" aria-pressed="false">90 dias</button></div>
+    <div id="adm-body" class="view" style="gap:12px"></div>
+  </section>
+
   <section id="v-privacidade" class="view doc" aria-label="Privacidade e termos" hidden>
     <a class="back" href="#/perfil"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>Perfil</a>
     <div class="page-head" style="padding-top:0"><h1>Privacidade e termos</h1></div>
@@ -168,6 +175,8 @@
     <p>O Enche AI é mantido por Henrique Klock, responsável (controlador) pelos dados tratados no app. Pedidos, dúvidas e reclamações sobre seus dados: <b>henriqueklock20@gmail.com</b>. Respondemos em até 15 dias.</p>
     <h2>O que o app guarda</h2>
     <p>Seus carros, abastecimentos, manutenções (com o arquivo da OS, se você anexar), os indicadores que escolheu e, se você cadastrar, a rua e o ponto no mapa de casa e do trabalho, sem número. Tudo fica primeiro no seu celular e, com a conta conectada, numa cópia na nuvem (Supabase, servidores em São Paulo) que só a sua conta acessa. Também guardamos o seu e-mail (para entrar), as avaliações de postos, os preços da bomba que você informar, as correções de qual é o posto no Google e do nome na fachada, o endereço de entrega do lembrete (se ligar) e os relatos que você mandar.</p>
+    <h2>Medição de uso do app</h2>
+    <p>Para melhorar o app, registramos por quais telas as pessoas passam (por exemplo: abriu, viu Postos, cadastrou o carro), com um código aleatório do aparelho, o tipo de aparelho e navegador e a versão do app. Não entra conta, e-mail, localização, preço nem nada que você digita. Só quem administra o app vê, e apenas em totais. Os registros são apagados em 90 dias. Base legal: legítimo interesse. Dá para desligar em Perfil › Medir uso do app.</p>
     <h2>Para que e com qual base legal</h2>
     <ul>
       <li><b>Funcionar o app e guardar seus registros na sua conta</b>: execução do serviço que você pediu ao criar a conta.</li>

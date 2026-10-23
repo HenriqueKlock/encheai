@@ -16,6 +16,7 @@ import { isNovo } from '../visual';
 import { toast } from '../ui';
 import { enablePush, pushState } from '../lembretes';
 import { showCarStep } from './primeirocarro';
+import { track } from '../uso';
 
 document.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).closest('[data-act="car-step"]')) showCarStep();
@@ -210,6 +211,7 @@ export function initInicio(opts: { signedIn: () => boolean; renderRec: () => voi
     if (el.closest('[data-push-on]')) {
       const err = await enablePush();
       if (err) return toast(err);
+      track('push_on');
       toast('Pronto: no dia seguinte a cada abastecimento chega um lembrete às 19h.');
       return void offerPush();
     }

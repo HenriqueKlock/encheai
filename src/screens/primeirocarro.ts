@@ -6,6 +6,7 @@ import { parseIntLoose } from '../calc';
 import { go } from '../router';
 import { $, esc, toast } from '../ui';
 import { DROP } from '../visual';
+import { track } from '../uso';
 
 let shownThisOpen = false;
 
@@ -27,6 +28,7 @@ export function showCarStep() {
   const el = $('v-boasvindas');
   document.body.classList.add('welcoming');
   el.hidden = false;
+  track('car_step');
   el.innerHTML =
     '<form class="welcome-in w2 car1" id="c1-form" novalidate>' +
     '<span class="w2-drop" aria-hidden="true">' + DROP(420, '#C3F25C') + '</span>' +
@@ -44,6 +46,7 @@ export function showCarStep() {
     '</form>';
   setTimeout(() => $<HTMLInputElement>('c1-model').focus({ preventScroll: true }), 300);
   $('c1-skip').addEventListener('click', () => {
+    track('car_skip');
     close();
     go('postos');
   });
@@ -75,6 +78,7 @@ export function showCarStep() {
     });
     await db.vehicles.put(row);
     await setMeta('current_vehicle', row.id);
+    track('car_created');
     close();
     go('inicio');
     toast(row.name + ' cadastrado');

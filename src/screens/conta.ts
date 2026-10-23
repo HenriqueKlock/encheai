@@ -1,6 +1,7 @@
 // Entrar sem senha: link (ou código) enviado por e-mail. Usado nas boas-vindas e no Perfil.
 import { sendLoginEmail, sync, verifyCode } from '../sync';
 import { esc, toast } from '../ui';
+import { track } from '../uso';
 
 let otpEmail = '';
 let otpSent = false;
@@ -44,12 +45,14 @@ export function renderLogin(box: HTMLElement, opts: { cta?: string; onDone?: () 
         otpEmail = q<HTMLInputElement>('email')!.value.trim().toLowerCase();
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(otpEmail)) throw new Error('Digite um e-mail válido.');
         await sendLoginEmail(otpEmail);
+        track('login_link');
         otpSent = true;
         toast('Link enviado para ' + otpEmail);
       } else {
         const code = q<HTMLInputElement>('code')!.value.replace(/\D/g, '');
         if (code.length < 6 || code.length > 8) throw new Error('Digite o código numérico que chegou no e-mail.');
         await verifyCode(otpEmail, code);
+        track('login_code');
         otpSent = false;
         toast('Conta conectada. Sincronizando…');
         opts.onDone?.();

@@ -30,8 +30,11 @@ import { captureAuthorization, initAutorizar, pendingAuthorization } from './scr
 import { initRelato } from './screens/relato';
 import { initInicio } from './screens/inicio';
 import { initPerfil } from './screens/perfil';
+import { initAdmin } from './screens/admin';
 import { applyConsentChoice, hideWelcome, shouldWelcome, showWelcome } from './screens/boasvindas';
 import { maybeCarStep } from './screens/primeirocarro';
+import { track } from './uso';
+import { currentRoute } from './router';
 
 /* ---------- sincronização: texto do status ---------- */
 let syncStatus: SyncStatus = { kind: 'signed-out' };
@@ -63,6 +66,7 @@ initLocais();
 const importar = initImportar();
 initAutorizar();
 initRelato();
+initAdmin();
 const authorizing = captureAuthorization();
 const perfil = initPerfil({ status: () => syncStatus, statusText: () => syncText()[1] });
 initInicio({ signedIn: () => signedIn, renderRec: postos.renderHome, answerAfter: (id, v) => fill.answerAfter(id, v) });
@@ -128,6 +132,9 @@ async function boot() {
   applyVisual();
   signedIn = !!(await currentSession());
   startRouter();
+  track('open');
+  track('view', currentRoute().view);
+  addEventListener('hashchange', () => track('view', currentRoute().view));
   // pedido de conexão do Claude: vai direto para a autorização, sem boas-vindas
   if (authorizing || pendingAuthorization()) return;
   if (await shouldWelcome(signedIn)) return showWelcome({ onClose: carStep });
@@ -139,6 +146,7 @@ supabase.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_IN') {
     signedIn = true;
     hideWelcome();
+    track('login_ok');
     applyConsentChoice();
     afterSync().then(carStep);
   }
