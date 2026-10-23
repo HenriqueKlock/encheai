@@ -710,31 +710,35 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     const cheapId = rec.cheapest && rec.cheapest.s.c !== bestId ? rec.cheapest.s.c : undefined;
     const top = [bestId, cheapId].map((c) => (c ? rows.find((r) => r.s.c === c) : undefined)).filter((r): r is StationRow => !!r);
     const list = [...top, ...sorted.filter((r) => r.s.c !== bestId && r.s.c !== cheapId)];
-    let html = compareStrip(base) + mediaStrip(rows) + (rec.best ? '' : noPriceCard(rows, b));
+    let html = compareStrip(base) + (rec.best ? '' : noPriceCard(rows, b));
     const why = '<details class="why2s"><summary>' + INFO + 'Por que este é o sugerido</summary>' + sourcesNote() + '</details>';
     html += '<div class="st2-list">' + list.slice(0, limit).map((r) => row2(r, b, rec, r.s.c === bestId, r.s.c === cheapId) + (r.s.c === bestId ? why : '')).join('') +
       (list.length > limit ? '<button type="button" class="list-more" data-act="all">Mostrar todos (' + list.length + ')</button>' : '') + '</div>';
     if (rec.cheaperUnsafe) html += '<p class="rec-warn">' + ICON.warn + '<span>' + esc(nm(rec.cheaperUnsafe.s)) + ' sairia mais barato, mas ficou de fora: ' + (rec.cheaperUnsafe.rel.recentSerious ? 'autuação séria da ANP nos últimos 12 meses.' : 'confiabilidade baixa.') + '</span></p>';
     return html;
   }
-  /** Preço médio da semana (pesquisa da ANP) na cidade dos postos da lista, no estado e no Brasil: a referência de todo mundo. */
-  function mediaStrip(rows: StationRow[]) {
+  /**
+   * Preço médio da semana pela pesquisa da ANP para comparar: o da cidade do posto (com 3 ou mais preços) ou,
+   * sem ele, o de SC. É a referência de todo mundo, não o preço de todos os postos.
+   */
+  function mediaFor(s: Station | null | undefined, fuel: Fuel): { v: number; where: string; semana: [string, string] } | null {
     const md = file?.medias;
-    if (!md) return '';
-    const count = new Map<string, number>();
-    for (const r of rows.slice(0, 20)) count.set(r.s.m, (count.get(r.s.m) ?? 0) + 1);
-    const city = [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
-    const mun = md.mun[cityKey(city)] ?? {};
-    const fuels = model().fuels.filter((f) => f === 'gasolina' || f === 'etanol');
-    const code = (f: Fuel): 'gc' | 'et' => (f === 'gasolina' ? 'gc' : 'et');
-    const cell = (label: string, v?: [number, number]) => (v ? '<span>' + label + ' <b>' + fmt(v[0], 2) + '</b></span>' : '');
-    const lines = fuels.map((f) => {
-      const c = code(f);
-      const parts = cell(city, mun[c]) + cell('SC', md.uf[c]) + cell('Brasil', md.br[c]);
-      return parts ? '<div class="md2-r"><i class="dot ' + (f === 'gasolina' ? 'gas' : 'eth') + '"></i>' + parts + '</div>' : '';
-    }).join('');
-    if (!lines) return '';
-    return '<div class="md2" aria-label="Preço médio da semana pela pesquisa da ANP"><span class="md2-l">Média da semana (ANP, ' + dm(md.semana[0]) + ' a ' + dm(md.semana[1]) + ')</span>' + lines + '</div>';
+    if (!md) return null;
+    const c = fuel === 'gasolina' ? 'gc' : 'et';
+    const city = s ? md.mun[cityKey(s.m)]?.[c] : undefined;
+    if (city) return { v: city[0], where: s!.m, semana: md.semana };
+    const uf = md.uf[c];
+    return uf ? { v: uf[0], where: 'SC', semana: md.semana } : null;
+  }
+  /** Indicador "acima/abaixo da média" para um preço (curto, para a placa de preço da ficha). */
+  function mediaTag(s: Station, fuel: Fuel, price: number) {
+    const m = mediaFor(s, fuel);
+    if (!m) return '';
+    const d = price - m.v;
+    const de = m.where === 'SC' ? 'de SC' : 'de ' + m.where;
+    const title = 'Média ' + de + ' na pesquisa da ANP de ' + dm(m.semana[0]) + ' a ' + dm(m.semana[1]) + ': ' + brl(m.v);
+    if (Math.abs(d) < 0.02) return '<span class="pl2-m eq" title="' + esc(title) + '">na média ' + esc(de) + '</span>';
+    return '<span class="pl2-m ' + (d < 0 ? 'down' : 'up') + '" title="' + esc(title) + '">' + (d < 0 ? '▼ ' : '▲ ') + fmt(Math.abs(d), 2) + (d < 0 ? ' abaixo' : ' acima') + ' da média ' + esc(de) + '</span>';
   }
   function row2(r: StationRow, b: Base, rec: Recommendation, isBest: boolean, isCheap: boolean) {
     const o = isBest ? rec.best! : isCheap ? rec.cheapest! : r.best;
@@ -1169,6 +1173,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
         }
         return '<div class="pl2' + (row.best && !row.best.stale && row.best.fuel === fuel ? ' win' : '') + '">' + k +
           '<span class="v">' + (pp ? fmt(pp.price, 2) : '–') + '</span><span class="d">' + (pp ? esc(who(pp)) + (ageDays(pp.date, today) > 30 ? ' (antigo)' : '') : 'sem preço recente') + '</span>' +
+          (pp && ageDays(pp.date, today) <= 30 ? mediaTag(s, fuel, pp.price) : '') +
           '<button type="button" class="pl2-add" data-pr="open" data-fuel="' + fuel + '" aria-label="Informar o preço do ' + FUEL[fuel].toLowerCase() + ' na bomba">' + PLUS + 'Informar preço</button></div>';
       };
       const head =
@@ -1973,7 +1978,7 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
     setTimeout(() => pmap?.invalidateSize(), 50);
   });
 
-  return { refresh, renderHome, openPosto, ensureFile, nearby, byId, nameOf: nm, priceAt, setHere, usage, favorite, place, fetchGoogleAround: fetchGoogle };
+  return { refresh, renderHome, openPosto, ensureFile, nearby, byId, nameOf: nm, priceAt, mediaFor, setHere, usage, favorite, place, fetchGoogleAround: fetchGoogle };
 }
 export type PostosApi = ReturnType<typeof initPostos>;
 

@@ -170,6 +170,7 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     hint.textContent = (pp.src === 'rede' ? (pp.seen ? 'Preço informado por quem passou aqui (' : 'Preço da rede (') + ago(pp.date) + ')' : pp.src === 'voce' ? (pp.seen ? 'Preço que você viu na bomba (' : 'Último preço que você pagou aqui (') + ago(pp.date) + ')' : 'Preço da pesquisa da ANP de ' + dm(pp.date)) + '. Confira na bomba.';
     hint.hidden = false;
     recalc();
+    mediaHint();
   }
 
   /** Dica do combustível: qual compensa neste posto, com o rendimento do seu carro. */
@@ -310,11 +311,31 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
     }
   }
 
+  /** Preço pago contra a média da semana (pesquisa da ANP) da cidade do posto, ou de SC. */
+  function mediaHint() {
+    const el = $('f-media');
+    el.hidden = true;
+    const f = fuelNow();
+    const p = parseNum($<HTMLInputElement>('f-price').value);
+    if (!f || !(p > 0) || (f !== 'gasolina' && f !== 'etanol')) return;
+    const m = postos.mediaFor(picked?.s ?? null, f);
+    const date = $<HTMLInputElement>('f-date').value || todayISO();
+    // abastecimento antigo não se compara com a média desta semana
+    if (!m || ageDays(m.semana[0], date) > 21) return;
+    const d = p - m.v;
+    const de = m.where === 'SC' ? 'de SC' : 'de ' + m.where;
+    el.className = 'f-media ' + (Math.abs(d) < 0.02 ? 'eq' : d < 0 ? 'down' : 'up');
+    el.innerHTML = (Math.abs(d) < 0.02 ? 'Na média ' + esc(de) : '<b>' + brl(Math.abs(d)) + (d < 0 ? ' abaixo' : ' acima') + '</b> da média ' + esc(de)) +
+      ' (' + brl(m.v) + ', pesquisa da ANP de ' + dm(m.semana[0]) + ' a ' + dm(m.semana[1]) + ')';
+    el.hidden = false;
+  }
+
   function updateHints() {
     const v = current();
     if (!v) return;
     fuelHint();
     calcLine();
+    mediaHint();
     const others = carLogs().filter((f) => !editing || f.id !== editing.id);
     const odo = parseIntLoose($<HTMLInputElement>('f-odo').value);
     const before = Number.isFinite(odo) ? others.filter((f) => f.odometer_km < odo).pop() : others[others.length - 1];
