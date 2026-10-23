@@ -17,3 +17,11 @@ Porte: agente de tratamento de pequeno porte (Resolução CD/ANPD nº 2/2022); s
 | Segurança | contadores de uso por conta | usuários | limites e prevenção de abuso | legítimo interesse | Supabase | dias correntes | — |
 
 Transferência internacional: Google, Resend, GitHub e Anthropic (EUA); OSM/Photon/OSRM (Europa). Fornecedores com contratos/termos de proteção de dados; revisar a adoção das cláusulas-padrão da ANPD (Resolução CD/ANPD nº 19/2024) a cada fornecedor novo.
+
+## Medição de uso do app (desde 23/10/2026)
+
+- **Dados:** evento de navegação (abriu o app, trocou de tela, passos do primeiro acesso, salvou abastecimento), código aleatório do aparelho, código aleatório da abertura do app, tipo de aparelho e navegador, versão do app. Sem conta, e-mail, localização, preço ou texto digitado.
+- **Finalidade:** melhorar o app (onde as pessoas se perdem no primeiro acesso, quais telas usam).
+- **Base legal:** legítimo interesse (ver avaliação), com opção de desligar em Perfil › Medir uso do app.
+- **Acesso:** ninguém lê a tabela pela API; administradores veem só totais no Painel do app (`admin_uso`). Aparelhos de administrador não são medidos.
+- **Retenção:** 90 dias (rotina diária `uso-retencao`).

@@ -3,6 +3,7 @@
 import { supabase } from '../sync';
 import { onShow } from '../router';
 import { $, esc } from '../ui';
+import { markAdminDevice } from '../uso';
 
 type Uso = {
   dias: number; aparelhos: number; aberturas: number; eventos: number; pularam_carro: number;
@@ -29,6 +30,7 @@ export async function souAdmin() {
   if (cache !== null) return cache;
   const { data, error } = await supabase.rpc('sou_admin');
   cache = !error && data === true;
+  if (cache) markAdminDevice();
   return cache;
 }
 

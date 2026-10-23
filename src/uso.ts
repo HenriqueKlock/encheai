@@ -12,6 +12,12 @@ const put = (k: string, v: string | null) => { try { if (v === null) localStorag
 const rid = () => (crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) => (+c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (+c / 4)))).toString(16)));
 
 export const usoOn = () => get(OFF) !== '1';
+/** Aparelho de administrador: não entra na medição (marcado ao entrar com conta de admin; fica marcado). */
+export function markAdminDevice() {
+  put('uso_admin', '1');
+  queue.length = 0;
+}
+const isAdminDevice = () => get('uso_admin') === '1';
 export function setUso(on: boolean) {
   put(OFF, on ? null : '1');
   if (!on) queue.length = 0;
@@ -35,7 +41,7 @@ const queue: Row[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 export function track(ev: UsoEv, view?: string) {
-  if (!usoOn()) return;
+  if (!usoOn() || isAdminDevice()) return;
   queue.push({ dev: dev!, sess, ev, view: view && /^[a-z]{2,15}$/.test(view) ? view : undefined, plat, ver });
   if (queue.length >= 40) flush();
   else if (!timer) timer = setTimeout(flush, 8000);

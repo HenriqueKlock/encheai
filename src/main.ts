@@ -30,7 +30,7 @@ import { captureAuthorization, initAutorizar, pendingAuthorization } from './scr
 import { initRelato } from './screens/relato';
 import { initInicio } from './screens/inicio';
 import { initPerfil } from './screens/perfil';
-import { initAdmin } from './screens/admin';
+import { initAdmin, souAdmin } from './screens/admin';
 import { applyConsentChoice, hideWelcome, shouldWelcome, showWelcome } from './screens/boasvindas';
 import { maybeCarStep } from './screens/primeirocarro';
 import { track } from './uso';
@@ -131,6 +131,7 @@ const carStep = () => { if (!pendingAuthorization()) maybeCarStep(); };
 async function boot() {
   applyVisual();
   signedIn = !!(await currentSession());
+  if (signedIn) souAdmin();
   startRouter();
   track('open');
   track('view', currentRoute().view);
@@ -147,6 +148,7 @@ supabase.auth.onAuthStateChange((event) => {
     signedIn = true;
     hideWelcome();
     track('login_ok');
+    souAdmin();
     applyConsentChoice();
     afterSync().then(carStep);
   }
