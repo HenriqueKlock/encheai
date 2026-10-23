@@ -3,7 +3,7 @@
 import { supabase } from '../sync';
 import { onShow } from '../router';
 import { $, esc } from '../ui';
-import { markAdminDevice } from '../uso';
+import { markAdminDevice, setUso, usoOn } from '../uso';
 
 type Uso = {
   dias: number; aparelhos: number; aberturas: number; eventos: number; pularam_carro: number;
@@ -75,4 +75,13 @@ export function initAdmin() {
     render();
   });
   onShow('admin', render);
+
+  // Tela "Medir uso do app": explica o que entra e liga/desliga neste aparelho
+  const sw = $<HTMLInputElement>('med-on');
+  const paint = () => {
+    sw.checked = usoOn();
+    $('med-st').textContent = usoOn() ? 'Ligado neste aparelho' : 'Desligado neste aparelho';
+  };
+  sw.addEventListener('change', () => { setUso(sw.checked); paint(); });
+  onShow('medicao', paint);
 }

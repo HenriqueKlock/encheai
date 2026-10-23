@@ -1,11 +1,11 @@
 // Navegação por endereço (#/postos, #/carro/historico…): o botão voltar do celular funciona
 // e cada tela pode ser aberta direto.
-export type ViewId = 'inicio' | 'postos' | 'carro' | 'perfil' | 'locais' | 'indicadores' | 'etanol' | 'privacidade' | 'importar' | 'autorizar' | 'admin';
+export type ViewId = 'inicio' | 'postos' | 'carro' | 'perfil' | 'locais' | 'indicadores' | 'etanol' | 'privacidade' | 'importar' | 'autorizar' | 'admin' | 'medicao';
 export interface Route { view: ViewId; sub: string | null }
 
 const TAB_OF: Record<ViewId, string> = {
   inicio: 'inicio', postos: 'postos', carro: 'carro', indicadores: 'carro', etanol: 'carro',
-  perfil: 'perfil', locais: 'perfil', privacidade: 'perfil', importar: 'perfil', autorizar: 'perfil', admin: 'perfil',
+  perfil: 'perfil', locais: 'perfil', privacidade: 'perfil', importar: 'perfil', autorizar: 'perfil', admin: 'perfil', medicao: 'perfil',
 };
 const VIEWS = Object.keys(TAB_OF) as ViewId[];
 

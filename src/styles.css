@@ -832,3 +832,5 @@ a.next-card { text-decoration: none; }
 .adm-bar .adm-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .adm-bar em { font-style: normal; color: var(--muted); font-size: 12px; }
 .adm-t { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; } .adm-t i { display: block; height: 100%; background: #2D6250; border-radius: 4px; }
 .adm-bar b { text-align: right; }
+.med-sw { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.med-sw > span { display: flex; flex-direction: column; gap: 2px; } .med-sw > span > span { color: var(--muted); font-size: 13px; }
