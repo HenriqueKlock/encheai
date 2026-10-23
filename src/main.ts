@@ -31,6 +31,7 @@ import { initRelato } from './screens/relato';
 import { initInicio } from './screens/inicio';
 import { initPerfil } from './screens/perfil';
 import { applyConsentChoice, hideWelcome, shouldWelcome, showWelcome } from './screens/boasvindas';
+import { maybeCarStep } from './screens/primeirocarro';
 
 /* ---------- sincronização: texto do status ---------- */
 let syncStatus: SyncStatus = { kind: 'signed-out' };
@@ -56,7 +57,7 @@ function renderSync() {
 /* ---------- telas ---------- */
 const carros = initCarros();
 const postos = initPostos({ fillAt: (s, fuel, price) => fill.openAt(s, fuel, price) });
-const fill = initAbastecer(postos, () => carros.openVehicle(null));
+const fill = initAbastecer(postos, () => carros.openVehicle(null, () => fill.open(null)));
 initCarro(fill);
 initLocais();
 const importar = initImportar();
@@ -110,13 +111,28 @@ onSyncStatus((st) => {
   renderSync();
 });
 
+/** Depois da primeira sincronização (ou 8 s, ou sem internet): só então dá para saber se a conta tem carro. */
+function afterSync(): Promise<void> {
+  return new Promise((done) => {
+    const settled = (k: SyncStatus['kind']) => k === 'ok' || k === 'error' || k === 'offline';
+    let off = () => {};
+    const t = setTimeout(() => { off(); done(); }, 8000);
+    off = onSyncStatus((st) => {
+      if (settled(st.kind)) { clearTimeout(t); queueMicrotask(() => off()); done(); }
+    }) as () => void;
+  });
+}
+const carStep = () => { if (!pendingAuthorization()) maybeCarStep(); };
+
 async function boot() {
   applyVisual();
   signedIn = !!(await currentSession());
   startRouter();
   // pedido de conexão do Claude: vai direto para a autorização, sem boas-vindas
   if (authorizing || pendingAuthorization()) return;
-  if (await shouldWelcome(signedIn)) showWelcome({ onClose: () => {} });
+  if (await shouldWelcome(signedIn)) return showWelcome({ onClose: carStep });
+  if (signedIn) await afterSync();
+  carStep();
 }
 
 supabase.auth.onAuthStateChange((event) => {
@@ -124,6 +140,7 @@ supabase.auth.onAuthStateChange((event) => {
     signedIn = true;
     hideWelcome();
     applyConsentChoice();
+    afterSync().then(carStep);
   }
   if (event === 'SIGNED_OUT') signedIn = false;
 });

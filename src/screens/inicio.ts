@@ -15,6 +15,11 @@ import { AFTER_OPTIONS, pendingAfter, type AfterEffect } from '../depois';
 import { isNovo } from '../visual';
 import { toast } from '../ui';
 import { enablePush, pushState } from '../lembretes';
+import { showCarStep } from './primeirocarro';
+
+document.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('[data-act="car-step"]')) showCarStep();
+});
 
 export function initInicio(opts: { signedIn: () => boolean; renderRec: () => void; answerAfter: (fillId: string, v: AfterEffect) => Promise<void> }) {
   function render() {
@@ -25,12 +30,15 @@ export function initInicio(opts: { signedIn: () => boolean; renderRec: () => voi
     // "Comece por aqui" fica até o primeiro registro do carro: sem carro, cadastrar; com carro, abastecer ou trazer o histórico
     const fresh = !!v && !S.logs.some((f) => f.vehicle_id === v.id && !f.deleted_at) && !S.services.some((s) => s.vehicle_id === v.id && !s.deleted_at);
     $('home-empty').hidden = !empty && !fresh;
+    $('home-empty').classList.toggle('bare', empty);
     const IMPORT_HINT = '<span class="start-imp">O histórico pode vir de uma <b>planilha</b>, de <b>PDFs de manutenção</b> (com a sua IA) ou do <b>Claude</b>.</span>';
     if (empty) {
+      // Sem carro, o destaque do Início é o cadastro (o atalho para Postos fica menor, logo abaixo)
       $('home-empty').innerHTML =
-        '<div class="card-head"><span>Comece por aqui</span></div>' +
-        '<p class="hint"><b>1.</b> Cadastre seu carro. <b>2.</b> Registre cada ida ao posto em Abastecer, ou traga o que você já anotou.</p>' +
-        '<div class="btn-row start-btns"><button type="button" class="btn primary" data-act="cars">Cadastrar carro</button><a class="btn" href="#/importar">Já tenho histórico</a></div>' + IMPORT_HINT;
+        '<div class="car-hero"><span class="l">Falta 1 passo</span><span class="t">Cadastre seu carro para começar</span>' +
+        '<span class="s">Leva 30 segundos. Sem ele não dá para registrar abastecimentos nem calcular o consumo.</span>' +
+        '<button type="button" class="btn primary block" data-act="car-step">Cadastrar carro</button>' +
+        '<a class="ch-imp" href="#/importar">Já tenho histórico</a></div>';
     } else if (fresh) {
       $('home-empty').innerHTML =
         '<div class="card-head"><span>Próximo passo no ' + esc(v!.name) + '</span></div>' +

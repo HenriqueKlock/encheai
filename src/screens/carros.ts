@@ -30,7 +30,9 @@ export function initCarros() {
 
   let editingVehicle: Vehicle | null = null;
   let archArmed = false;
-  function openVehicle(id: string | null) {
+  let afterSave: (() => void) | null = null;
+  function openVehicle(id: string | null, then?: () => void) {
+    afterSave = then ?? null;
     editingVehicle = id ? S.vehicles.find((v) => v.id === id) ?? null : null;
     archArmed = false;
     const ev = editingVehicle;
@@ -89,7 +91,9 @@ export function initCarros() {
     });
     await db.vehicles.put(row);
     if (!editingVehicle) await setMeta('current_vehicle', row.id);
-    closeSheets();
+    const next = editingVehicle ? null : afterSave;
+    afterSave = null;
+    closeSheets(next ?? undefined);
     toast(editingVehicle ? 'Carro atualizado' : name + ' cadastrado');
   });
 

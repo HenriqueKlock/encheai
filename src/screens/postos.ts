@@ -11,7 +11,7 @@ import { currentSession, googleEmbedKey, googleNota, googlePhoto, googlePlaces, 
 import { fetchNetwork, invalidateNetwork, network } from '../rede';
 import { plausible, reportPrices, reportedAsOwn } from '../precos';
 import { getMeta, setMeta, stamp, db, type FuelLog } from '../db';
-import { S, carInfo, carLogs, carIntervals, subscribe } from '../store';
+import { S, current, carInfo, carLogs, carIntervals, subscribe } from '../store';
 import { mapPicks, stationUsage, type MapMode } from '../postos';
 import { $, ago, brl, closeSheets, dm, esc, fmt, openSheet, onSheetClose, pl, sheetOpen, todayISO, toast } from '../ui';
 import { currentRoute, go, onShow } from '../router';
@@ -1872,6 +1872,10 @@ export function initPostos(ctx: { fillAt: (s: Station, fuel: Fuel | null, price:
   function renderHome() {
     const el = $('home-rec');
     if (currentRoute().view !== 'inicio') return;
+    if (!current()) {
+      el.innerHTML = '<a class="card rec-mini" href="#/postos"><span><b>Ver preços perto de você</b><span>Ou informe o preço que viu na bomba</span></span>' + ICON.chev + '</a>';
+      return;
+    }
     const kind: BaseKind | null = rota()?.on && (rota()?.pts.length ?? 0) > 1 ? 'rota' : place('casa') ? 'casa' : place('trabalho') ? 'trabalho' : here ? 'agora' : null;
     if (!kind) {
       el.innerHTML =
