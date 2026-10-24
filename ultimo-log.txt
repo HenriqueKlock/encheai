@@ -11,15 +11,14 @@ Levantamento de preços…
   2026-08-30: 646 preços em 172 postos
 Fiscalização…
   HEAD falhou: HTTP Error 403: Forbidden
-  baixado 15 MB em 22s
-  fiscalização: 244247 linhas lidas, 3190 da(s) UF(s) desde 2021-10-23, 1098 CNPJs
+  baixado 15 MB em 25s
+  fiscalização: 244247 linhas lidas, 3190 da(s) UF(s) desde 2021-10-25, 1098 CNPJs
   gravado estado/fisc-SC.json (198 KB)
 Coordenadas…
-  4 postos sem coordenada (limite desta rodada: 0 consultas)
-  limite de consultas desta rodada atingido; o resto fica para a próxima
+  4 postos sem coordenada (limite desta rodada: 3000 consultas)
   gravado estado/geocache.json (255 KB)
 OpenStreetMap…
   gravado estado/osm-SC.json (209 KB)
-  1577 postos no OpenStreetMap; 508 ligados a postos da ANP
-  gravado estado/postos-SC.json (494 KB)
-Resumo: {"cadastro": 2103, "com_local": 1867, "sem_local": 236, "com_preco": 217}
+  1578 postos no OpenStreetMap; 508 ligados a postos da ANP
+  gravado estado/postos-SC.json (495 KB)
+Resumo: {"cadastro": 2103, "com_local": 1870, "sem_local": 233, "com_preco": 217}
