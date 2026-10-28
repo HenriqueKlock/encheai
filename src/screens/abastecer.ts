@@ -222,11 +222,14 @@ export function initAbastecer(postos: PostosApi, needCar: () => void) {
   function calcLine() {
     const box = $('f-calc');
     const t = parseNum($<HTMLInputElement>('f-total').value), l = parseNum($<HTMLInputElement>('f-liters').value), p = parseNum($<HTMLInputElement>('f-price').value);
-    const known = p > 0 && !adjust && !editing;
+    // só recolhe para a linha quando o preço veio da sugestão; preço digitado pela pessoa nunca some da tela
+    const known = p > 0 && priceAuto && !adjust && !editing;
     $('fill-sheet').classList.toggle('pl-hide', known);
-    box.hidden = !(p > 0) || adjust || !!editing;
+    box.hidden = !known;
     box.innerHTML = '= <b>' + (t > 0 && l > 0 ? fmt(l, 1) + ' litros' : '– litros') + '</b> a ' + brl(p) + '/l <button type="button" class="link-btn" data-adj>Ajustar</button>';
   }
+  // mexeu no preço ou nos litros: fica no modo de ajuste até fechar o formulário (não recolhe com o teclado aberto)
+  for (const id of ['f-price', 'f-liters']) $(id).addEventListener('focus', () => { adjust = true; });
   $('f-calc').addEventListener('click', (e) => {
     if (!(e.target as HTMLElement).closest('[data-adj]')) return;
     adjust = true;
