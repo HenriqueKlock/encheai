@@ -11,15 +11,19 @@ Levantamento de preços…
   2026-08-30: 646 preços em 172 postos
 Fiscalização…
   HEAD falhou: HTTP Error 403: Forbidden
-  baixado 15 MB em 22s
-  fiscalização: 244247 linhas lidas, 3164 da(s) UF(s) desde 2021-11-01, 1093 CNPJs
+  baixado 15 MB em 17s
+  fiscalização: 244247 linhas lidas, 3161 da(s) UF(s) desde 2021-11-04, 1092 CNPJs
   gravado estado/fisc-SC.json (196 KB)
 Coordenadas…
-  0 postos sem coordenada (limite desta rodada: 3000 consultas)
+  1 postos sem coordenada (limite desta rodada: 3000 consultas)
   gravado estado/geocache.json (255 KB)
 OpenStreetMap…
-  falhou (HTTP Error 502: Bad Gateway); tentando de novo em 5s
-  gravado estado/osm-SC.json (210 KB)
+  falhou (<urlopen error [Errno 101] Network is unreachable>); tentando de novo em 5s
+  falhou (<urlopen error [Errno 101] Network is unreachable>); tentando de novo em 10s
+   overpass falhou: https://overpass-api.de/api/interpreter não consegui baixar https://overpass-api.de/api/interpreter?data=%5Bout%3Ajson%5D%5Btimeout%3A240%5D%3Barea%5B%22ISO3166-2%22%3D%22BR-SC%22%5D%5B%22admin_level%22%3D%224%22%5D-%3E.a%3Bnwr%5B%22amenity%22%3D%22fuel%22%5D%28area.a%29%3Bout+center+tags%3B: <urlopen error [Errno 101] Network is unreachable>
+  falhou (HTTP Error 504: Gateway Timeout); tentando de novo em 5s
+  falhou (HTTP Error 504: Gateway Timeout); tentando de novo em 10s
+   overpass falhou: https://overpass.kumi.systems/api/interpreter não consegui baixar https://overpass.kumi.systems/api/interpreter?data=%5Bout%3Ajson%5D%5Btimeout%3A240%5D%3Barea%5B%22ISO3166-2%22%3D%22BR-SC%22%5D%5B%22admin_level%22%3D%224%22%5D-%3E.a%3Bnwr%5B%22amenity%22%3D%22fuel%22%5D%28area.a%29%3Bout+center+tags%3B: HTTP Error 504: Gateway Timeout
   1582 postos no OpenStreetMap; 508 ligados a postos da ANP
   gravado estado/postos-SC.json (494 KB)
 Resumo: {"cadastro": 2103, "com_local": 1870, "sem_local": 233, "com_preco": 217}
