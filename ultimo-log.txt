@@ -1,6 +1,6 @@
 Cadastro de revendedores…
   colunas do cadastro: {'cnpj': 'CNPJ', 'razao': 'RAZAOSOCIAL', 'fantasia': None, 'bandeira': 'BANDEIRA', 'end': 'ENDERECO', 'num': None, 'bairro': 'BAIRRO', 'cep': 'CEP', 'mun': 'MUNICIPIO', 'uf': 'UF', 'comp': 'COMPLEMENTO'}
-  2096 postos em SC
+  2095 postos em SC
 Levantamento de preços…
   semanas: ['2026-10-04→2026-10-10', '2026-09-27→2026-10-03', '2026-09-20→2026-09-26', '2026-09-13→2026-09-19', '2026-09-06→2026-09-12', '2026-08-30→2026-09-05']
   2026-10-04: 647 preços em 174 postos
@@ -11,15 +11,14 @@ Levantamento de preços…
   2026-08-30: 646 preços em 172 postos
 Fiscalização…
   HEAD falhou: HTTP Error 403: Forbidden
-  baixado 15 MB em 25s
-  fiscalização: 244247 linhas lidas, 3156 da(s) UF(s) desde 2021-11-18, 1089 CNPJs
+  baixado 15 MB em 27s
+  fiscalização: 244247 linhas lidas, 3155 da(s) UF(s) desde 2021-11-22, 1088 CNPJs
   gravado estado/fisc-SC.json (196 KB)
 Coordenadas…
-  1 postos sem coordenada (limite desta rodada: 3000 consultas)
+  0 postos sem coordenada (limite desta rodada: 3000 consultas)
   gravado estado/geocache.json (256 KB)
 OpenStreetMap…
-  falhou (HTTP Error 502: Bad Gateway); tentando de novo em 5s
   gravado estado/osm-SC.json (210 KB)
   1583 postos no OpenStreetMap; 507 ligados a postos da ANP
   gravado estado/postos-SC.json (494 KB)
-Resumo: {"cadastro": 2103, "com_local": 1872, "sem_local": 231, "com_preco": 217}
+Resumo: {"cadastro": 2102, "com_local": 1871, "sem_local": 231, "com_preco": 217}
